@@ -13,6 +13,28 @@ from data_loader import get_budget_data, get_orders_data
 from analytics import calculate_portfolio_holdings, get_historical_performance
 from ai_allocator import generate_allocation_tips
 
+def format_number(val, is_currency=False, currency="BRL", decimals=2):
+    if pd.isna(val) or val is None:
+        return ""
+    try:
+        val_float = float(val)
+        # Formata o número com o número especificado de casas decimais
+        fmt_str = f"{{:,.{decimals}f}}"
+        formatted = fmt_str.format(val_float)
+        
+        # Inverte os separadores: ',' vira temporariamente 'X', '.' vira ',', e 'X' vira '.'
+        formatted = formatted.replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        if is_currency:
+            if currency == "USD":
+                return f"US$ {formatted}"
+            return f"R$ {formatted}"
+            
+        return formatted
+    except Exception:
+        return str(val)
+
+
 # Configuração da página Streamlit
 st.set_page_config(
     page_title="Paulo - Finanças & Investimentos",
@@ -33,11 +55,11 @@ st.markdown("""
     
     /* Customização dos Cards de Métricas */
     .metric-card {
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--secondary-background-color);
+        border: 1px solid rgba(128, 128, 128, 0.2);
         border-radius: 16px;
         padding: 24px;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         margin-bottom: 20px;
@@ -45,7 +67,7 @@ st.markdown("""
     }
     .metric-card:hover {
         transform: translateY(-4px);
-        border-color: rgba(255, 255, 255, 0.2);
+        border-color: rgba(128, 128, 128, 0.4);
     }
     
     .metric-label {
@@ -59,7 +81,7 @@ st.markdown("""
     .metric-value {
         font-size: 28px;
         font-weight: 700;
-        color: #ffffff;
+        color: var(--text-color);
     }
     
     .metric-delta-positive {
@@ -90,12 +112,11 @@ with st.sidebar:
     data_mode = st.radio(
         "Fonte de Dados:",
         ["Modo Demonstração (Dados Simulados)", "Dados Reais (Google Sheets)"],
-        index=0,
+        index=1,
         help="Alterne entre dados de teste e a integração em tempo real com suas planilhas do Google Sheets."
     )
     
     use_mock = (data_mode == "Modo Demonstração (Dados Simulados)")
-    
     # Campo manual de Chave de API do Gemini para facilidade do usuário
     st.markdown("---")
     st.header("🤖 Inteligência Artificial")
@@ -192,6 +213,14 @@ with tab1:
         saving_rate = total_receitas - total_despesas
         saving_pct = (saving_rate / total_receitas * 100.0) if total_receitas > 0 else 0.0
         
+        # Formata os valores para exibição no estilo PT-BR
+        total_market_val_formatted = format_number(total_market_val, is_currency=True, currency="BRL")
+        total_invested_formatted = format_number(total_invested, is_currency=True, currency="BRL")
+        total_profit_formatted = format_number(abs(total_profit), is_currency=True, currency="BRL")
+        total_return_pct_formatted = format_number(total_return_pct, decimals=2)
+        saving_rate_formatted = format_number(saving_rate, is_currency=True, currency="BRL")
+        saving_pct_formatted = format_number(saving_pct, decimals=1)
+        
         # Seção de Métricas Premium (Cards HTML Customizados)
         col1, col2, col3, col4 = st.columns(4)
         
@@ -199,7 +228,7 @@ with tab1:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-label">Patrimônio Atual</div>
-                <div class="metric-value">R$ {total_market_val:,.2f}</div>
+                <div class="metric-value">{total_market_val_formatted}</div>
                 <div class="metric-delta-positive">Posição em Tempo Real</div>
             </div>
             """, unsafe_allow_html=True)
@@ -208,19 +237,19 @@ with tab1:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-label">Capital Investido</div>
-                <div class="metric-value">R$ {total_invested:,.2f}</div>
+                <div class="metric-value">{total_invested_formatted}</div>
                 <div class="metric-delta-positive">Aportes Acumulados</div>
             </div>
             """, unsafe_allow_html=True)
             
         with col3:
             profit_class = "metric-delta-positive" if total_profit >= 0 else "metric-delta-negative"
-            prefix = "+" if total_profit >= 0 else ""
+            prefix = "+" if total_profit >= 0 else "-"
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-label">Lucro/Prejuízo Total</div>
-                <div class="metric-value">{prefix}R$ {total_profit:,.2f}</div>
-                <div class="{profit_class}">{prefix}{total_return_pct:.2f}% de Retorno</div>
+                <div class="metric-value">{prefix}{total_profit_formatted}</div>
+                <div class="{profit_class}">{prefix}{total_return_pct_formatted}% de Retorno</div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -228,8 +257,8 @@ with tab1:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-label">Taxa de Poupança (Mês)</div>
-                <div class="metric-value">R$ {saving_rate:,.2f}</div>
-                <div class="metric-delta-positive">{saving_pct:.1f}% da receita poupado</div>
+                <div class="metric-value">{saving_rate_formatted}</div>
+                <div class="metric-delta-positive">{saving_pct_formatted}% da receita poupado</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -246,15 +275,20 @@ with tab1:
                 hole=0.45,
                 color_discrete_sequence=px.colors.qualitative.G10
             )
-            fig_pie_type.update_traces(textposition='inside', textinfo='percent+label')
+            fig_pie_type.update_traces(
+                textposition='inside', 
+                textinfo='percent+label',
+                hovertemplate="<b>Classe:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+            )
             fig_pie_type.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font_color="#ffffff",
                 showlegend=False,
-                margin=dict(t=10, b=10, l=10, r=10)
+                margin=dict(t=10, b=10, l=10, r=10),
+                separators=",."
             )
-            st.plotly_chart(fig_pie_type, use_container_width=True)
+            st.plotly_chart(fig_pie_type, width='stretch')
             
         with col_g2:
             st.subheader("Distribuição por Ativo Específico")
@@ -265,15 +299,20 @@ with tab1:
                 hole=0.45,
                 color_discrete_sequence=px.colors.qualitative.Pastel
             )
-            fig_pie_asset.update_traces(textposition='inside', textinfo='percent+label')
+            fig_pie_asset.update_traces(
+                textposition='inside', 
+                textinfo='percent+label',
+                hovertemplate="<b>Ativo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+            )
             fig_pie_asset.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font_color="#ffffff",
                 showlegend=False,
-                margin=dict(t=10, b=10, l=10, r=10)
+                margin=dict(t=10, b=10, l=10, r=10),
+                separators=",."
             )
-            st.plotly_chart(fig_pie_asset, use_container_width=True)
+            st.plotly_chart(fig_pie_asset, width='stretch')
 
         # Gráfico Orçamentário e Proventos
         st.markdown("### 💵 Fluxo de Caixa e Proventos Passivos")
@@ -291,17 +330,22 @@ with tab1:
                 x="Fluxo",
                 y="Valor (R$)",
                 color="Cor",
-                text_auto=".2f",
                 color_discrete_map={"Receitas": "#00E676", "Despesas": "#FF5252", "Proventos": "#2979FF"}
+            )
+            fig_flow.update_traces(
+                texttemplate="R$ %{y:,.2f}",
+                textposition="outside",
+                hovertemplate="<b>Fluxo:</b> %{x}<br><b>Total:</b> R$ %{y:,.2f}<extra></extra>"
             )
             fig_flow.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font_color="#ffffff",
                 showlegend=False,
-                xaxis_title=None
+                xaxis_title=None,
+                separators=",."
             )
-            st.plotly_chart(fig_flow, use_container_width=True)
+            st.plotly_chart(fig_flow, width='stretch')
             
         with col_budget_g2:
             st.subheader("Maiores Proventos por Ativo")
@@ -315,15 +359,21 @@ with tab1:
                     color="Ativo",
                     color_discrete_sequence=px.colors.qualitative.Safe
                 )
+                fig_divs.update_traces(
+                    texttemplate="R$ %{x:,.2f}",
+                    textposition="outside",
+                    hovertemplate="<b>Ativo:</b> %{y}<br><b>Total Recebido:</b> R$ %{x:,.2f}<extra></extra>"
+                )
                 fig_divs.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     font_color="#ffffff",
                     showlegend=False,
                     xaxis_title="Proventos Acumulados (R$)",
-                    yaxis_title=None
+                    yaxis_title=None,
+                    separators=",."
                 )
-                st.plotly_chart(fig_divs, use_container_width=True)
+                st.plotly_chart(fig_divs, width='stretch')
             else:
                 st.info("Nenhum dividendo lançado recentemente.")
 
@@ -342,15 +392,20 @@ with tab1:
                     hole=0.4,
                     color_discrete_sequence=px.colors.qualitative.Prism
                 )
-                fig_rec_cat.update_traces(textposition='inside', textinfo='percent+label')
+                fig_rec_cat.update_traces(
+                    textposition='inside', 
+                    textinfo='percent+label',
+                    hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                )
                 fig_rec_cat.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     font_color="#ffffff",
                     showlegend=False,
-                    margin=dict(t=10, b=10, l=10, r=10)
+                    margin=dict(t=10, b=10, l=10, r=10),
+                    separators=",."
                 )
-                st.plotly_chart(fig_rec_cat, use_container_width=True)
+                st.plotly_chart(fig_rec_cat, width='stretch')
             else:
                 st.info("Nenhuma receita lançada para categorização.")
                 
@@ -365,15 +420,20 @@ with tab1:
                     hole=0.4,
                     color_discrete_sequence=px.colors.qualitative.Set2
                 )
-                fig_desp_cat.update_traces(textposition='inside', textinfo='percent+label')
+                fig_desp_cat.update_traces(
+                    textposition='inside', 
+                    textinfo='percent+label',
+                    hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                )
                 fig_desp_cat.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     font_color="#ffffff",
                     showlegend=False,
-                    margin=dict(t=10, b=10, l=10, r=10)
+                    margin=dict(t=10, b=10, l=10, r=10),
+                    separators=",."
                 )
-                st.plotly_chart(fig_desp_cat, use_container_width=True)
+                st.plotly_chart(fig_desp_cat, width='stretch')
             else:
                 st.info("Nenhuma despesa lançada para categorização.")
 
@@ -396,12 +456,14 @@ with tab2:
             
         # Filtra o DataFrame histórico de acordo com a opção selecionada
         df_chart = df_perf.copy()
-        if days_option == "Últimos 12 meses":
-            df_chart = df_chart.last("365D")
-        elif days_option == "Últimos 6 meses":
-            df_chart = df_chart.last("180D")
-        elif days_option == "Último mês":
-            df_chart = df_chart.last("30D")
+        if not df_chart.empty:
+            max_date = df_chart.index.max()
+            if days_option == "Últimos 12 meses":
+                df_chart = df_chart[df_chart.index >= max_date - pd.Timedelta(days=365)]
+            elif days_option == "Últimos 6 meses":
+                df_chart = df_chart[df_chart.index >= max_date - pd.Timedelta(days=180)]
+            elif days_option == "Último mês":
+                df_chart = df_chart[df_chart.index >= max_date - pd.Timedelta(days=30)]
             
         # Garante que os retornos comecem em 0% no período selecionado para fins de comparação justa de ganho relativo
         comparison_columns = [c for c in df_chart.columns if "Acumulado (%)" in c]
@@ -442,10 +504,11 @@ with tab2:
             xaxis_title="Data",
             yaxis_title="Ganho/Perda (%)",
             xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)"),
-            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", ticksuffix="%")
+            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", ticksuffix="%"),
+            separators=",."
         )
         
-        st.plotly_chart(fig_perf, use_container_width=True)
+        st.plotly_chart(fig_perf, width='stretch')
         
         # Tabela resumo comparativa com os números mais recentes
         st.markdown("### 📋 Resumo Acumulado no Período Selecionado")
@@ -463,73 +526,200 @@ with tab2:
 with tab3:
     st.subheader("📑 Visualização dos Lançamentos e Histórico de Transações")
     
-    col_l1, col_l2 = st.columns(2)
-    
-    with col_l1:
-        st.markdown("#### 🪙 Histórico de Ordens de Compra e Venda")
-        if df_orders.empty:
-            st.info("Nenhuma ordem cadastrada.")
-        else:
-            # Filtro interativo de ativos
-            ativos_unicos = ["Todos"] + sorted(df_orders["Papel"].dropna().unique().tolist())
-            ativo_selecionado = st.selectbox("Filtrar por Ativo:", ativos_unicos)
+    st.markdown("### 🪙 Histórico de Ordens de Compra e Venda")
+    if df_orders.empty:
+        st.info("Nenhuma ordem cadastrada.")
+    else:
+        # Filtro interativo de ativos
+        ativos_unicos = ["Todos"] + sorted(df_orders["Papel"].dropna().unique().tolist())
+        ativo_selecionado = st.selectbox("Filtrar por Ativo:", ativos_unicos)
+        
+        df_orders_filtered = df_orders.copy()
+        if ativo_selecionado != "Todos":
+            df_orders_filtered = df_orders_filtered[df_orders_filtered["Papel"] == ativo_selecionado]
             
-            df_orders_filtered = df_orders.copy()
-            if ativo_selecionado != "Todos":
-                df_orders_filtered = df_orders_filtered[df_orders_filtered["Papel"] == ativo_selecionado]
+        df_orders_display = df_orders_filtered.sort_values("data envio", ascending=False).copy()
+        # Formata colunas de valores e quantidades no padrão PT-BR
+        df_orders_display["Total líquido"] = df_orders_display.apply(lambda r: format_number(r["Total líquido"], is_currency=True, currency=r["Moeda"]), axis=1)
+        df_orders_display["Preço médio + corretagem"] = df_orders_display.apply(lambda r: format_number(r["Preço médio + corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
+        df_orders_display["Preço médio"] = df_orders_display.apply(lambda r: format_number(r["Preço médio"], is_currency=True, currency=r["Moeda"]), axis=1)
+        df_orders_display["Total"] = df_orders_display.apply(lambda r: format_number(r["Total"], is_currency=True, currency=r["Moeda"]), axis=1)
+        df_orders_display["Corretagem"] = df_orders_display.apply(lambda r: format_number(r["Corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
+        df_orders_display["Qtd Executada"] = df_orders_display["Qtd Executada"].apply(lambda v: format_number(v, decimals=4 if v % 1 != 0 else 0))
+        
+        st.dataframe(
+            df_orders_display,
+            column_config={
+                "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
+            },
+            width='stretch'
+        )
+        
+        # Soma totalizadora dinâmica
+        moedas_filtradas = df_orders_filtered["Moeda"].unique()
+        if len(moedas_filtradas) == 1:
+            moeda_display = moedas_filtradas[0]
+            total_soma_ordens = df_orders_filtered["Total líquido"].sum()
+        else:
+            # Caso misto (exibe o consolidado total líquido em BRL)
+            total_soma_ordens = df_orders_filtered["Total líquido"].sum()
+            moeda_display = "BRL"
+            
+        total_soma_formatted = format_number(total_soma_ordens, is_currency=True, currency=moeda_display)
+        st.markdown(f"""
+        <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total Líquido (Filtro Ativo)</span>
+            <span style="font-weight: 700; color: #2979FF; font-size: 20px;">{total_soma_formatted}</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown("---")
+    st.markdown("### 💰 Receitas, Despesas e Dividendos")
+    sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Receitas", "Despesas", "Dividendos"])
+    
+    with sub_tab1:
+        if df_receitas.empty:
+            st.info("Nenhuma receita cadastrada.")
+        else:
+            # Filtro por Categoria de Receitas
+            categorias_receitas = ["Todas"] + sorted(df_receitas["Categoria"].dropna().unique().tolist())
+            cat_receita_sel = st.selectbox("Filtrar por Categoria (Receitas):", categorias_receitas, key="filter_rec_cat")
+            
+            df_receitas_filtered = df_receitas.copy()
+            if cat_receita_sel != "Todas":
+                df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Categoria"] == cat_receita_sel]
                 
+            df_receitas_display = df_receitas_filtered.copy()
+            
+            # Calcula "Dias até" dinamicamente
+            def calc_receitas_dias(date_val):
+                if pd.isna(date_val):
+                    return ""
+                today = pd.Timestamp.now().normalize()
+                date_val = pd.to_datetime(date_val).normalize()
+                if date_val < today:
+                    return "Já creditado"
+                elif date_val == today:
+                    return "Credita hoje!"
+                else:
+                    diff = (date_val - today).days
+                    return f"Faltam {diff} dias"
+                    
+            df_receitas_display["Dias até"] = df_receitas_display["Recebido em"].apply(calc_receitas_dias)
+            df_receitas_display["Valor"] = df_receitas_display["Valor"].apply(lambda v: format_number(v, is_currency=True, currency="BRL"))
             st.dataframe(
-                df_orders_filtered.sort_values("data envio", ascending=False),
+                df_receitas_display,
                 column_config={
-                    "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
-                    "Total líquido": st.column_config.NumberColumn("Total Líquido", format="R$ %.2f"),
-                    "Preço médio + corretagem": st.column_config.NumberColumn("Preço Médio c/ Corr", format="R$ %.2f")
+                    "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
                 },
-                use_container_width=True
+                width='stretch'
             )
             
-    with col_l2:
-        st.markdown("#### 💰 Receitas, Despesas e Dividendos")
-        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Receitas", "Despesas", "Dividendos"])
-        
-        with sub_tab1:
-            if df_receitas.empty:
-                st.info("Nenhuma receita cadastrada.")
-            else:
-                st.dataframe(
-                    df_receitas,
-                    column_config={
-                        "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
-                        "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f")
-                    },
-                    use_container_width=True
-                )
+            # Soma totalizadora dinâmica
+            total_rec_soma = df_receitas_filtered["Valor"].sum()
+            total_rec_formatted = format_number(total_rec_soma, is_currency=True, currency="BRL")
+            st.markdown(f"""
+            <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Receitas (Filtro)</span>
+                <span style="font-weight: 700; color: #00E676; font-size: 20px;">{total_rec_formatted}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+    with sub_tab2:
+        if df_despesas.empty:
+            st.info("Nenhuma despesa cadastrada.")
+        else:
+            # Filtro por Categoria de Despesas
+            categorias_despesas = ["Todas"] + sorted(df_despesas["Categoria"].dropna().unique().tolist())
+            cat_despesa_sel = st.selectbox("Filtrar por Categoria (Despesas):", categorias_despesas, key="filter_des_cat")
+            
+            df_despesas_filtered = df_despesas.copy()
+            if cat_despesa_sel != "Todas":
+                df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Categoria"] == cat_despesa_sel]
                 
-        with sub_tab2:
-            if df_despesas.empty:
-                st.info("Nenhuma despesa cadastrada.")
-            else:
-                st.dataframe(
-                    df_despesas,
-                    column_config={
-                        "Gasto em": st.column_config.DateColumn("Gasto Em", format="DD/MM/YYYY"),
-                        "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f")
-                    },
-                    use_container_width=True
-                )
+            df_despesas_display = df_despesas_filtered.copy()
+            
+            # Calcula "Dias até" dinamicamente
+            def calc_despesas_dias(date_val):
+                if pd.isna(date_val):
+                    return ""
+                today = pd.Timestamp.now().normalize()
+                date_val = pd.to_datetime(date_val).normalize()
+                if date_val < today:
+                    return "Já debitado"
+                elif date_val == today:
+                    return "Debita hoje!"
+                else:
+                    diff = (date_val - today).days
+                    return f"Faltam {diff} dias"
+                    
+            df_despesas_display["Dias até"] = df_despesas_display["Gasto em"].apply(calc_despesas_dias)
+            df_despesas_display["Valor"] = df_despesas_display["Valor"].apply(lambda v: format_number(v, is_currency=True, currency="BRL"))
+            st.dataframe(
+                df_despesas_display,
+                column_config={
+                    "Gasto em": st.column_config.DateColumn("Gasto Em", format="DD/MM/YYYY"),
+                },
+                width='stretch'
+            )
+            
+            # Soma totalizadora dinâmica
+            total_des_soma = df_despesas_filtered["Valor"].sum()
+            total_des_formatted = format_number(total_des_soma, is_currency=True, currency="BRL")
+            st.markdown(f"""
+            <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Despesas (Filtro)</span>
+                <span style="font-weight: 700; color: #FF5252; font-size: 20px;">{total_des_formatted}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+    with sub_tab3:
+        if df_dividendos.empty:
+            st.info("Nenhum dividendo passivo lançado.")
+        else:
+            # Filtro por Ativo de Dividendos
+            ativos_dividendos = ["Todos"] + sorted(df_dividendos["Ativo"].dropna().unique().tolist())
+            ativo_div_sel = st.selectbox("Filtrar por Ativo (Dividendos):", ativos_dividendos, key="filter_div_ativo")
+            
+            df_dividendos_filtered = df_dividendos.copy()
+            if ativo_div_sel != "Todos":
+                df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Ativo"] == ativo_div_sel]
                 
-        with sub_tab3:
-            if df_dividendos.empty:
-                st.info("Nenhum dividendo passivo lançado.")
-            else:
-                st.dataframe(
-                    df_dividendos,
-                    column_config={
-                        "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
-                        "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f")
-                    },
-                    use_container_width=True
-                )
+            df_dividendos_display = df_dividendos_filtered.copy()
+            
+            # Calcula "Dias até" dinamicamente
+            def calc_dividendos_dias(date_val):
+                if pd.isna(date_val):
+                    return ""
+                today = pd.Timestamp.now().normalize()
+                date_val = pd.to_datetime(date_val).normalize()
+                if date_val < today:
+                    return "Já creditado"
+                elif date_val == today:
+                    return "Credita hoje!"
+                else:
+                    diff = (date_val - today).days
+                    return f"Faltam {diff} dias"
+                    
+            df_dividendos_display["Dias até"] = df_dividendos_display["Recebido em"].apply(calc_dividendos_dias)
+            df_dividendos_display["Valor"] = df_dividendos_display["Valor"].apply(lambda v: format_number(v, is_currency=True, currency="BRL"))
+            st.dataframe(
+                df_dividendos_display,
+                column_config={
+                    "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
+                },
+                width='stretch'
+            )
+            
+            # Soma totalizadora dinâmica
+            total_div_soma = df_dividendos_filtered["Valor"].sum()
+            total_div_formatted = format_number(total_div_soma, is_currency=True, currency="BRL")
+            st.markdown(f"""
+            <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Dividendos (Filtro)</span>
+                <span style="font-weight: 700; color: #FFC107; font-size: 20px;">{total_div_formatted}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
 # ================= TAB 4: CONSULTORIA COM IA =================
 with tab4:

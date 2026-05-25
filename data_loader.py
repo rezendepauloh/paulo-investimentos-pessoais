@@ -1,10 +1,25 @@
 import os
 import re
+import json
+import logging
+from logging.handlers import RotatingFileHandler
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 import streamlit as st
+
+# Cria a pasta de logs se ela não existir
+os.makedirs("logs", exist_ok=True)
+
+# Configuração do Logger Rotativo (máximo 3 arquivos de 3MB)
+log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+log_handler = RotatingFileHandler("logs/app.log", maxBytes=3 * 1024 * 1024, backupCount=2, encoding="utf-8")
+log_handler.setFormatter(log_formatter)
+
+logger = logging.getLogger("DataLoader")
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
 
 # Carrega variáveis de ambiente (override=True garante atualização dinâmica)
 load_dotenv(override=True)
@@ -33,6 +48,35 @@ def clean_currency(val):
     if "," in val_str:
         val_str = val_str.replace(".", "")  # remove separador de milhar
         val_str = val_str.replace(",", ".")  # substitui vírgula por ponto decimal
+        
+    try:
+        return float(val_str)
+    except ValueError:
+        return 0.0
+
+def clean_float(val):
+    """
+    Converte valores decimais de forma robusta, suportando formatos BR (1.234,56) e US (1,234.56).
+    """
+    if pd.isna(val) or val == "":
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    
+    val_str = str(val).strip()
+    # Remove símbolos monetários comuns e espaços
+    val_str = re.sub(r"[R\$\s\xa0US]", "", val_str)
+    
+    if "," in val_str and "." in val_str:
+        if val_str.find(",") > val_str.find("."):
+            # Padrão BR: 1.234,56
+            val_str = val_str.replace(".", "").replace(",", ".")
+        else:
+            # Padrão US: 1,234.56
+            val_str = val_str.replace(",", "")
+    elif "," in val_str:
+        # Se tiver apenas vírgula, ex: 1,5 ou 1.500
+        val_str = val_str.replace(",", ".")
         
     try:
         return float(val_str)
@@ -84,7 +128,6 @@ def load_sheet_data(spreadsheet_id, sheet_name):
         records = worksheet.get_all_records()
         
         if not records:
-            # Caso esteja vazia ou get_all_records não capture cabeçalhos corretamente
             data = worksheet.get_all_values()
             if len(data) > 1:
                 headers = [h.strip() for h in data[0]]
@@ -95,10 +138,10 @@ def load_sheet_data(spreadsheet_id, sheet_name):
         else:
             df = pd.DataFrame(records)
             
-        # Limpa espaços em branco dos nomes das colunas
         df.columns = [col.strip() for col in df.columns]
         return df
     except Exception as e:
+        logger.error(f"Erro ao carregar a aba '{sheet_name}' da planilha '{spreadsheet_id}': {e}")
         st.error(f"Erro ao carregar a aba '{sheet_name}' da planilha '{spreadsheet_id}': {e}")
         return pd.DataFrame()
 
@@ -106,7 +149,6 @@ def get_mock_data():
     """
     Gera dados simulados de alta qualidade para demonstração do aplicativo.
     """
-    # 1. Receitas Simuladas
     receitas_data = [
         {"Nome": "Salário Principal", "Valor": 8500.0, "Categoria": "Trabalho", "Recebido em": "05/05/2026", "Dias até": 0},
         {"Nome": "Projeto Freelance", "Valor": 2200.0, "Categoria": "Renda Extra", "Recebido em": "12/05/2026", "Dias até": 0},
@@ -116,7 +158,6 @@ def get_mock_data():
     df_receitas["Valor"] = df_receitas["Valor"].astype(float)
     df_receitas["Dias até"] = df_receitas["Dias até"].astype(int)
 
-    # 2. Despesas Simuladas
     despesas_data = [
         {"Nome": "Aluguel & Condomínio", "Valor": 2800.0, "Categoria": "Moradia", "Conta debitada": "Itaú", "Gasto em": "02/05/2026", "Dias até": 0, "Tipo de Cobrança": "Fixo"},
         {"Nome": "Supermercado", "Valor": 1100.0, "Categoria": "Alimentação", "Conta debitada": "Nubank", "Gasto em": "10/05/2026", "Dias até": 0, "Tipo de Cobrança": "Variável"},
@@ -130,7 +171,6 @@ def get_mock_data():
     df_despesas["Valor"] = df_despesas["Valor"].astype(float)
     df_despesas["Dias até"] = df_despesas["Dias até"].astype(int)
 
-    # 3. Dividendos Simulados
     dividendos_data = [
         {"Nome": "Rendimento HGLG11", "Valor": 110.0, "Ativo": "HGLG11", "Categoria": "FIIs", "Recebido em": "15/05/2026", "Dias até": 0},
         {"Nome": "Dividendos PETR4", "Valor": 320.0, "Ativo": "PETR4", "Categoria": "Ações", "Recebido em": "20/05/2026", "Dias até": 0},
@@ -141,19 +181,13 @@ def get_mock_data():
     df_dividendos["Valor"] = df_dividendos["Valor"].astype(float)
     df_dividendos["Dias até"] = df_dividendos["Dias até"].astype(int)
 
-    # 4. Ordens Simuladas (Para simular rentabilidade de 2025 até 2026)
     ordens_data = [
-        # Compras Iniciais (Início de 2025)
         {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "WEGE3", "Qtd Executada": 100, "Preço médio": 35.0, "Total": 3500.0, "data envio": "15/01/2025 10:30:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 35.0, "Total líquido": 3500.0},
         {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "PETR4", "Qtd Executada": 150, "Preço médio": 28.0, "Total": 4200.0, "data envio": "18/01/2025 11:15:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 28.0, "Total líquido": 4200.0},
         {"Compra/Venda": "Compra", "Tipo": "FIIs", "Moeda": "BRL", "Papel": "HGLG11", "Qtd Executada": 50, "Preço médio": 155.0, "Total": 7750.0, "data envio": "20/01/2025 14:00:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 155.0, "Total líquido": 7750.0},
-        
-        # Aportes adicionais (Meio de 2025)
         {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "VALE3", "Qtd Executada": 50, "Preço médio": 62.0, "Total": 3100.0, "data envio": "10/07/2025 10:45:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 62.0, "Total líquido": 3100.0},
         {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "WEGE3", "Qtd Executada": 50, "Preço médio": 38.5, "Total": 1925.0, "data envio": "12/07/2025 15:20:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 38.5, "Total líquido": 1925.0},
-        
-        # Aportes Recentes (Início de 2026)
-        {"Compra/Venda": "Compra", "Tipo": "Internacional", "Moeda": "USD", "Papel": "IVV", "Qtd Executada": 10, "Preço médio": 480.0, "Total": 4800.0, "data envio": "05/01/2026 16:00:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 480.0, "Total líquido": 24000.0}, # Total líquido convertido para BRL (aprox 5.0)
+        {"Compra/Venda": "Compra", "Tipo": "Internacional", "Moeda": "USD", "Papel": "IVV", "Qtd Executada": 10, "Preço médio": 480.0, "Total": 4800.0, "data envio": "05/01/2026 16:00:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 480.0, "Total líquido": 24000.0},
     ]
     df_ordens = pd.DataFrame(ordens_data)
     df_ordens["data envio"] = pd.to_datetime(df_ordens["data envio"], format="%d/%m/%Y %H:%M:%S")
@@ -173,20 +207,16 @@ def get_budget_data(use_mock=False):
     if not budget_id:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     
-    # 1. Carrega Receitas
     df_receitas = load_sheet_data(budget_id, "Receitas")
     if not df_receitas.empty:
-        # Garante conversão estrita para strings para evitar erros com o PyArrow do Streamlit
         df_receitas["Nome"] = df_receitas["Nome"].astype(str).str.strip()
         df_receitas["Categoria"] = df_receitas["Categoria"].astype(str).str.strip()
         df_receitas["Valor"] = df_receitas["Valor"].apply(clean_currency)
         df_receitas["Recebido em"] = pd.to_datetime(df_receitas["Recebido em"], format="%d/%m/%Y", errors="coerce")
         df_receitas["Dias até"] = df_receitas["Dias até"].apply(clean_int)
         
-    # 2. Carrega Despesas
     df_despesas = load_sheet_data(budget_id, "Despesas")
     if not df_despesas.empty:
-        # Garante conversão estrita para strings para evitar erros com o PyArrow do Streamlit
         df_despesas["Nome"] = df_despesas["Nome"].astype(str).str.strip()
         df_despesas["Categoria"] = df_despesas["Categoria"].astype(str).str.strip()
         if "Conta debitada" in df_despesas.columns:
@@ -198,7 +228,6 @@ def get_budget_data(use_mock=False):
         df_despesas["Gasto em"] = pd.to_datetime(df_despesas["Gasto em"], format="%d/%m/%Y", errors="coerce")
         df_despesas["Dias até"] = df_despesas["Dias até"].apply(clean_int)
         
-    # 3. Carrega Dividendos
     df_dividendos = load_sheet_data(budget_id, "Dividendos")
     if not df_dividendos.empty:
         col_mapping = {}
@@ -227,7 +256,7 @@ def get_budget_data(use_mock=False):
 
 def get_orders_data(use_mock=False):
     """
-    Carrega e limpa os dados da Planilha de Ordens.
+    Carrega e limpa os dados da Planilha de Ordens com autocorreção robusta e logs.
     """
     load_dotenv(override=True)
     if use_mock:
@@ -255,10 +284,9 @@ def get_orders_data(use_mock=False):
                     headers = [h.strip() for h in data[0]]
                     df_orders = pd.DataFrame(data[1:], columns=headers)
         except Exception as e:
-            st.error(f"Erro ao carregar a primeira aba da planilha de ordens: {e}")
+            logger.error(f"Erro ao carregar a primeira aba da planilha de ordens: {e}")
             
     if not df_orders.empty:
-        # Normalização case-insensitive e tolerante das colunas da Planilha de Ordens
         col_mapping = {}
         for col in df_orders.columns:
             c_lower = str(col).lower().strip()
@@ -290,14 +318,12 @@ def get_orders_data(use_mock=False):
         if col_mapping:
             df_orders = df_orders.rename(columns=col_mapping)
             
-        # Fallbacks e segurança contra KeyErrors
         if "data envio" not in df_orders.columns:
             for col in df_orders.columns:
                 if "data" in str(col).lower():
                     df_orders = df_orders.rename(columns={col: "data envio"})
                     break
             if "data envio" not in df_orders.columns:
-                st.error(f"⚠️ A coluna com a Data de Envio não foi encontrada na Planilha de Ordens! Colunas detectadas: {list(df_orders.columns)}")
                 df_orders["data envio"] = pd.Timestamp.now()
                 
         if "Papel" not in df_orders.columns:
@@ -314,24 +340,38 @@ def get_orders_data(use_mock=False):
                     df_orders = df_orders.rename(columns={col: "Qtd Executada"})
                     break
                     
-        # Sanitização e tipos das colunas numéricas
         numeric_cols = ["Qtd Executada", "Preço médio", "Total", "Corretagem", "Preço médio + corretagem", "Total líquido"]
         for col in numeric_cols:
             if col in df_orders.columns:
                 if col == "Qtd Executada":
-                    df_orders[col] = df_orders[col].apply(clean_int)
+                    df_orders[col] = df_orders[col].apply(clean_float)
                 else:
                     df_orders[col] = df_orders[col].apply(clean_currency)
             else:
-                # Preenche colunas ausentes com zeros
                 df_orders[col] = 0.0
+                
+        if "Qtd Executada" in df_orders.columns and "Total" in df_orders.columns and "Preço médio" in df_orders.columns:
+            import math
+            for idx, row in df_orders.iterrows():
+                try:
+                    qty = float(row["Qtd Executada"])
+                    tot = float(row["Total"])
+                    pm = float(row["Preço médio"])
+                    
+                    if qty > 0 and tot > 0 and pm > 0:
+                        expected_qty = tot / pm
+                        if qty > expected_qty * 3.0:
+                            ratio = qty / expected_qty
+                            power = round(math.log10(ratio))
+                            if power > 0:
+                                df_orders.at[idx, "Qtd Executada"] = qty / (10 ** power)
+                except Exception:
+                    pass
                     
         if "data envio" in df_orders.columns:
-            # Copia os dados originais em string para evitar sobrescrita com NaT
             raw_dates = df_orders["data envio"].copy()
-            # Converte as datas de forma robusta no padrão brasileiro (dia primeiro)
             df_orders["data envio"] = pd.to_datetime(raw_dates, dayfirst=True, errors="coerce")
-                
+            
         string_cols = ["Compra/Venda", "Tipo", "Moeda", "Papel"]
         for col in string_cols:
             if col in df_orders.columns:
@@ -339,4 +379,49 @@ def get_orders_data(use_mock=False):
             else:
                 df_orders[col] = ""
                 
+        # Autocorreção in-app de segurança contra distorções de milhar/localidade em bonificações
+        if not df_orders.empty:
+            for idx, row in df_orders.iterrows():
+                try:
+                    op = str(row.get("Compra/Venda", "")).strip().upper()
+                    if "BONIFICAÇÃO" in op or "BONIFICACAO" in op or "DESDOBRAMENTO" in op:
+                        papel = str(row.get("Papel", "")).strip().upper()
+                        data_dt = row.get("data envio")
+                        if pd.isna(data_dt) or data_dt == "":
+                            continue
+                        
+                        data_str = ""
+                        if hasattr(data_dt, "strftime"):
+                            data_str = data_dt.strftime("%d/%m/%Y")
+                        else:
+                            val_str = str(data_dt).strip()
+                            match = re.search(r"(\d{2}/\d{2}/\d{4})", val_str)
+                            if match:
+                                data_str = match.group(1)
+                            else:
+                                match_us = re.search(r"(\d{4})-(\d{2})-(\d{2})", val_str)
+                                if match_us:
+                                    data_str = f"{match_us.group(3)}/{match_us.group(2)}/{match_us.group(1)}"
+                                    
+                        if not data_str:
+                            continue
+                            
+                        chave = (papel, data_str)
+                        
+                        correcoes_conhecidas = {}
+                        correcoes_env = os.getenv("CORRECOES_CONHECIDAS", "{}")
+                        try:
+                            correcoes_dict = json.loads(correcoes_env)
+                            # Converte a chave "TICKER|DATA" para a tupla (TICKER, DATA)
+                            correcoes_conhecidas = {tuple(k.split("|")): float(v) for k, v in correcoes_dict.items()}
+                        except Exception as e:
+                            logger.error(f"Erro ao carregar CORRECOES_CONHECIDAS do .env: {e}")
+                        
+                        if chave in correcoes_conhecidas:
+                            old_val = df_orders.at[idx, "Qtd Executada"]
+                            df_orders.at[idx, "Qtd Executada"] = correcoes_conhecidas[chave]
+                            logger.info(f"Autocorreção de bonificação aplicada na memória: {papel} em {data_str} corrigido de {old_val} para {correcoes_conhecidas[chave]}")
+                except Exception as e:
+                    logger.error(f"Erro ao processar autocorreção de bonificação na linha {idx}: {e}")
+                    
     return df_orders

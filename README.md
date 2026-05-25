@@ -116,3 +116,13 @@ Para que o seu aplicativo Python acesse com segurança suas planilhas privadas d
   - **CDI e IPCA:** Coletados diretamente da API do Banco Central do Brasil em tempo real.
   - **Ibovespa e S&P 500:** Coletados do Yahoo Finance (`yfinance`).
 - **Inteligência Artificial Gemini:** Diagnóstico sobre sua capacidade de poupança (salário vs gastos), riscos de diversificação e rebalanceamento saudável com base nos seus ativos reais.
+
+---
+
+## 🚀 Upgrades e Melhorias Recentes
+
+- **Cálculo de Rentabilidade TWR (Time-Weighted Return) por Cotas**: Implementamos a fórmula matemática padrão da ANBIMA e das corretoras profissionais. Agora, novos aportes e resgates volumosos não causam mais o efeito de "diluição de rentabilidade", gerando gráficos históricos 100% corretos.
+- **Normalização Multiplicativa de Splits e Bonificações**: Suporte total a desdobramentos de ativos de forma retroativa e proporcional ao tempo, garantindo que o custo médio e as quantidades históricas fiquem matematicamente alinhados com o estado atual.
+- **Correção Dinâmica e Silenciosa de Decimais PT-BR**: Sistema inteligente baseado em Regex para converter, ler e autocorrigir valores do Google Sheets que sofreram distorções de localidade (ponto vs vírgula decimal brasileira).
+- **Desacoplamento Completo e Configuração Dinâmica (`.env`)**: Removemos todos os dados sensíveis e tabelas estáticas de splits ou correções de ativos do código-fonte. Agora, tudo é lido de forma dinâmica de variáveis JSON em `.env` (`CORRECOES_CONHECIDAS` e `SPLITS_OFICIAIS`).
+- **Sistema de Logs Profissional e Rotativo**: Monitoramento robusto através de um logger rotativo configurado para manter no máximo 3 arquivos de log de até 3MB cada (limpando os mais antigos automaticamente) para garantir a saúde do espaço em disco.

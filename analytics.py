@@ -1,9 +1,25 @@
 import datetime
+import os
+import json
+import logging
+from logging.handlers import RotatingFileHandler
 import requests
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import streamlit as st
+
+# Cria a pasta de logs se não existir
+os.makedirs("logs", exist_ok=True)
+
+# Configuração do Logger Rotativo (máximo 3 arquivos de 3MB)
+log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+log_handler = RotatingFileHandler("logs/app.log", maxBytes=3 * 1024 * 1024, backupCount=2, encoding="utf-8")
+log_handler.setFormatter(log_formatter)
+
+logger = logging.getLogger("Analytics")
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
 
 def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
     """
@@ -85,6 +101,26 @@ def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
     fator = (1.0 + daily_rate) ** np.arange(1, len(dates) + 1)
     return pd.Series(fator, index=dates)
 
+def is_valid_yfinance_ticker(ticker: str, asset_type: str = None) -> bool:
+    """
+    Verifica se um ticker é válido para consulta no Yahoo Finance.
+    Retorna False para Renda Fixa, Contas, Dinheiro ou outros ativos não cotados publicamente.
+    """
+    t = str(ticker).strip().upper()
+    if not t or t in ["CONTA", "CAPITAL", "CAIXA", "SALDO", "CDB", "LCI", "LCA", "TESOURO", "POUPANÇA", "POUPANCA"]:
+        return False
+        
+    if asset_type:
+        atype = str(asset_type).strip().upper()
+        if atype in ["RENDA FIXA", "OUTROS", "CASH", "CONTA", "TESOURO DIRETO", "CDB", "POUPANÇA", "POUPANCA"]:
+            return False
+            
+    # Se contiver espaços ou for excessivamente longo, não é um ticker de mercado
+    if " " in t or len(t) > 10:
+        return False
+        
+    return True
+
 def normalize_ticker(ticker: str):
     """
     Normaliza os códigos dos papéis para o formato correto no Yahoo Finance.
@@ -105,13 +141,24 @@ def normalize_ticker(ticker: str):
     return t
 
 @st.cache_data(ttl=3600)
-def get_current_prices(tickers):
+def get_current_prices(tickers, ticker_types=None):
     """
     Obtém a cotação atual (tempo real) para uma lista de tickers usando yfinance.
     Retorna um dicionário {ticker_original: preco_atual}.
     """
     prices = {}
-    normalized_map = {normalize_ticker(t): t for t in tickers if t}
+    if ticker_types is None:
+        ticker_types = {}
+        
+    valid_tickers = []
+    for t in tickers:
+        if not t:
+            continue
+        asset_type = ticker_types.get(t, None)
+        if is_valid_yfinance_ticker(t, asset_type):
+            valid_tickers.append(t)
+            
+    normalized_map = {normalize_ticker(t): t for t in valid_tickers}
     
     if not normalized_map:
         return prices
@@ -136,6 +183,33 @@ def get_current_prices(tickers):
         
     return prices
 
+@st.cache_data(ttl=3600)
+def get_usd_brl_rate():
+    """
+    Obtém a taxa de câmbio atual de USD para BRL usando yfinance.
+    """
+    try:
+        data = yf.download("USDBRL=X", period="1d", progress=False, timeout=10)
+        if not data.empty:
+            close_col = None
+            if "Close" in data.columns:
+                close_col = data["Close"]
+            else:
+                for col in data.columns:
+                    if col == "Close" or (isinstance(col, tuple) and col[0] == "Close"):
+                        close_col = data[col]
+                        break
+            
+            if close_col is not None:
+                val = close_col.iloc[-1]
+                if isinstance(val, pd.Series):
+                    val = val.iloc[0] if not val.empty else 5.0
+                return float(val)
+    except Exception as e:
+        st.warning(f"Não foi possível obter a taxa de câmbio USD/BRL: {e}")
+    return 5.0  # Fallback razoável
+
+@st.cache_data(ttl=600)
 def calculate_portfolio_holdings(df_orders):
     """
     Calcula a carteira atualizada de investimentos com base no histórico de ordens.
@@ -157,7 +231,7 @@ def calculate_portfolio_holdings(df_orders):
         if not ticker or ticker == "NAN":
             continue
             
-        qty = int(row.get("Qtd Executada", 0))
+        qty = float(row.get("Qtd Executada", 0))
         total_spent = float(row.get("Total líquido", 0)) # Contém corretagem embutida
         price_avg_unit = float(row.get("Preço médio + corretagem", 0))
         
@@ -167,7 +241,7 @@ def calculate_portfolio_holdings(df_orders):
         if ticker not in holdings:
             holdings[ticker] = {
                 "ticker": ticker,
-                "quantidade": 0,
+                "quantidade": 0.0,
                 "preco_medio": 0.0,
                 "total_investido": 0.0,
                 "tipo": row.get("Tipo", "Ações"),
@@ -176,15 +250,14 @@ def calculate_portfolio_holdings(df_orders):
             
         h = holdings[ticker]
         
-        if "COMPRA" in action or action == "C":
+        if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
             new_qty = h["quantidade"] + qty
             new_total = h["total_investido"] + total_spent
             h["preco_medio"] = new_total / new_qty if new_qty > 0 else 0.0
             h["quantidade"] = new_qty
             h["total_investido"] = new_total
         elif "VENDA" in action or action == "V":
-            # Na venda, o preço médio se mantém igual, apenas reduzimos a quantidade
-            new_qty = max(0, h["quantidade"] - qty)
+            new_qty = max(0.0, h["quantidade"] - qty)
             h["quantidade"] = new_qty
             h["total_investido"] = new_qty * h["preco_medio"]
             
@@ -195,21 +268,71 @@ def calculate_portfolio_holdings(df_orders):
     if df_holdings.empty:
         return pd.DataFrame()
         
+    # Busca taxa de câmbio USD/BRL
+    usd_brl_rate = get_usd_brl_rate()
+        
     # Busca preços de fechamento atuais
     tickers_list = df_holdings["ticker"].tolist()
-    current_prices = get_current_prices(tickers_list)
+    ticker_types = df_holdings.set_index("ticker")["tipo"].to_dict()
+    current_prices = get_current_prices(tickers_list, ticker_types)
     
-    # Adiciona colunas de valorização atual
-    df_holdings["preco_atual"] = df_holdings["ticker"].map(current_prices)
-    # Se yfinance falhar para algum ativo (ex: Renda Fixa ou ativo sem cotação), usa preco_medio como fallback
-    df_holdings["preco_atual"] = df_holdings["preco_atual"].fillna(df_holdings["preco_medio"])
+    # Adiciona colunas para controle de moedas e valorizações
+    df_holdings["preco_atual_orig"] = df_holdings["ticker"].map(current_prices)
     
-    df_holdings["valor_atual"] = df_holdings["quantidade"] * df_holdings["preco_atual"]
-    df_holdings["lucro_prejuizo"] = df_holdings["valor_atual"] - df_holdings["total_investido"]
-    df_holdings["retorno_percentual"] = (df_holdings["lucro_prejuizo"] / df_holdings["total_investido"]) * 100.0
+    # Para ativos sem cotação, usa preco_medio como fallback (que é em BRL se inserido em BRL, ou USD se USD)
+    df_holdings["preco_atual_orig"] = df_holdings["preco_atual_orig"].fillna(df_holdings["preco_medio"])
+    
+    # Processa cada ativo para unificar em BRL
+    total_investido_brl = []
+    preco_medio_brl = []
+    preco_atual_brl = []
+    
+    for _, row in df_holdings.iterrows():
+        is_usd = (row["moeda"] == "USD")
+        p_avg = row["preco_medio"]
+        p_curr = row["preco_atual_orig"]
+        
+        if is_usd:
+            # Heurística: se preco_medio for muito superior ao preço atual em USD,
+            # significa que o usuário digitou o Total Líquido / Preço em BRL.
+            if p_avg > p_curr * 2.5:
+                # O usuário já digitou totais em BRL na planilha de ordens
+                total_investido_brl.append(row["total_investido"])
+                preco_medio_brl.append(p_avg)
+            else:
+                # O usuário digitou totais em USD na planilha de ordens
+                total_investido_brl.append(row["total_investido"] * usd_brl_rate)
+                preco_medio_brl.append(p_avg * usd_brl_rate)
+                
+            preco_atual_brl.append(p_curr * usd_brl_rate)
+        else:
+            # Ativos nacionais em BRL
+            total_investido_brl.append(row["total_investido"])
+            preco_medio_brl.append(p_avg)
+            preco_atual_brl.append(p_curr)
+            
+    df_holdings["total_investido_brl"] = total_investido_brl
+    df_holdings["preco_medio_brl"] = preco_medio_brl
+    df_holdings["preco_atual_brl"] = preco_atual_brl
+    
+    df_holdings["valor_atual_brl"] = df_holdings["quantidade"] * df_holdings["preco_atual_brl"]
+    df_holdings["lucro_prejuizo_brl"] = df_holdings["valor_atual_brl"] - df_holdings["total_investido_brl"]
+    df_holdings["retorno_percentual"] = np.where(
+        df_holdings["total_investido_brl"] > 0,
+        (df_holdings["lucro_prejuizo_brl"] / df_holdings["total_investido_brl"]) * 100.0,
+        0.0
+    )
+    
+    # Sobrescreve as colunas padrão com os valores em BRL para garantir 100% de compatibilidade global
+    df_holdings["total_investido"] = df_holdings["total_investido_brl"]
+    df_holdings["preco_medio"] = df_holdings["preco_medio_brl"]
+    df_holdings["preco_atual"] = df_holdings["preco_atual_brl"]
+    df_holdings["valor_atual"] = df_holdings["valor_atual_brl"]
+    df_holdings["lucro_prejuizo"] = df_holdings["lucro_prejuizo_brl"]
     
     return df_holdings
 
+@st.cache_data(ttl=600)
 def get_historical_performance(df_orders):
     """
     Reconstrói a série temporal da carteira dia a dia e calcula os retornos acumulados.
@@ -219,6 +342,10 @@ def get_historical_performance(df_orders):
     df = df_orders.dropna(subset=["data envio"]).sort_values("data envio").copy()
     if df.empty:
         return pd.DataFrame()
+        
+    # Pré-calcula a quantidade consolidada de splits (desdobramentos e bonificações) por ativo
+    df_splits_totais = df[df["Compra/Venda"].str.upper().str.contains("DESDOBRAMENTO|BONIFICACAO|BONIFICAÇÃO")]
+    splits_por_ativo = df_splits_totais.groupby("Papel")["Qtd Executada"].sum().to_dict()
         
     min_date = df["data envio"].min()
     if pd.isna(min_date) or min_date is pd.NaT:
@@ -232,8 +359,25 @@ def get_historical_performance(df_orders):
     
     # Busca cotações históricas de todos os ativos listados
     tickers = df["Papel"].unique()
-    normalized_tickers = [normalize_ticker(t) for t in tickers if t]
+    ticker_types = df.groupby("Papel")["Tipo"].first().to_dict()
+    ticker_currencies = df.groupby("Papel")["Moeda"].first().to_dict()
     
+    normalized_tickers = []
+    has_usd_assets = False
+    
+    for t in tickers:
+        if not t:
+            continue
+        asset_type = ticker_types.get(t, None)
+        if is_valid_yfinance_ticker(t, asset_type):
+            normalized_tickers.append(normalize_ticker(t))
+            if ticker_currencies.get(t, "BRL") == "USD":
+                has_usd_assets = True
+                
+    # Se houver ativos em USD, também baixa o histórico do câmbio USD/BRL
+    if has_usd_assets:
+        normalized_tickers.append("USDBRL=X")
+            
     # Baixa histórico dos ativos em lote
     hist_prices = pd.DataFrame(index=date_range)
     if normalized_tickers:
@@ -251,6 +395,10 @@ def get_historical_performance(df_orders):
             
     # Preenche feriados e fins de semana nas cotações históricas
     hist_prices = hist_prices.ffill().bfill()
+    
+    # Se a coluna do dólar existir, garante que não tenha NaNs
+    if "USDBRL=X" in hist_prices.columns:
+        hist_prices["USDBRL=X"] = hist_prices["USDBRL=X"].ffill().bfill().fillna(5.0)
     
     # Calcula cotações históricas dos índices benchmark
     benchmarks = {"^BVSP": "Ibovespa", "^GSPC": "S&P 500"}
@@ -283,6 +431,9 @@ def get_historical_performance(df_orders):
     # Agora calculamos o valor da carteira dia a dia
     portfolio_values = []
     invested_values = []
+    cota_values = []
+    cota_atual = 1.0
+    valor_ontem = 0.0
     
     for date in date_range:
         # Filtra ordens até esta data
@@ -291,6 +442,7 @@ def get_historical_performance(df_orders):
         if ordens_ate_hoje.empty:
             portfolio_values.append(0.0)
             invested_values.append(0.0)
+            cota_values.append(1.0)
             continue
             
         # Calcula a posição atualizada até esta data
@@ -298,22 +450,23 @@ def get_historical_performance(df_orders):
         for _, row in ordens_ate_hoje.iterrows():
             action = str(row.get("Compra/Venda", "")).strip().upper()
             ticker = str(row.get("Papel", "")).strip().upper()
-            qty = int(row.get("Qtd Executada", 0))
+            qty = float(row.get("Qtd Executada", 0))
             total_spent = float(row.get("Total líquido", 0))
             price_avg_unit = float(row.get("Preço médio + corretagem", 0))
+            moeda = str(row.get("Moeda", "BRL")).strip().upper()
             
             if ticker not in holdings:
-                holdings[ticker] = {"qty": 0, "invested": 0.0, "avg_cost": 0.0}
+                holdings[ticker] = {"qty": 0.0, "invested": 0.0, "avg_cost": 0.0, "moeda": moeda}
                 
             h = holdings[ticker]
-            if "COMPRA" in action or action == "C":
+            if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
                 new_qty = h["qty"] + qty
                 new_invested = h["invested"] + total_spent
                 h["avg_cost"] = new_invested / new_qty if new_qty > 0 else 0.0
                 h["qty"] = new_qty
                 h["invested"] = new_invested
             elif "VENDA" in action or action == "V":
-                new_qty = max(0, h["qty"] - qty)
+                new_qty = max(0.0, h["qty"] - qty)
                 h["qty"] = new_qty
                 h["invested"] = new_qty * h["avg_cost"]
                 
@@ -321,21 +474,151 @@ def get_historical_performance(df_orders):
         total_market_value = 0.0
         total_invested_capital = 0.0
         
+        # Pega a taxa de câmbio histórica daquela data específica
+        usd_rate_today = 5.0
+        if "USDBRL=X" in hist_prices.columns:
+            val = hist_prices.loc[date, "USDBRL=X"]
+            if isinstance(val, pd.Series):
+                val = val.iloc[0] if not val.empty else 5.0
+            usd_rate_today = float(val)
+            if pd.isna(usd_rate_today) or usd_rate_today <= 0:
+                usd_rate_today = 5.0
+        
+        splits_oficiais = {}
+        splits_env = os.getenv("SPLITS_OFICIAIS", "{}")
+        try:
+            splits_dict = json.loads(splits_env)
+            # Converte a chave "TICKER|DATA" para a tupla (TICKER, DATA)
+            splits_oficiais = {tuple(k.split("|")): float(v) for k, v in splits_dict.items()}
+        except Exception as e:
+            logger.error(f"Erro ao carregar SPLITS_OFICIAIS do .env: {e}")
+        
         for ticker, h in holdings.items():
             if h["qty"] <= 0:
                 continue
                 
+            # Calcula o multiplicador de split acumulado futuro para esta data
+            multiplicador_split = 1.0
+            for (s_ticker, s_data_str), s_fator in splits_oficiais.items():
+                if s_ticker == ticker:
+                    s_date = datetime.datetime.strptime(s_data_str, "%Y-%m-%d").date()
+                    # Se a data do loop for anterior à ocorrência do split, aplica o multiplicador retroativo
+                    if date.date() < s_date:
+                        multiplicador_split *= s_fator
+                        
+            qty_historica_ajustada = h["qty"] * multiplicador_split
+                
             norm_t = normalize_ticker(ticker)
-            # Busca preço histórico do ativo na data específica
-            price = h["avg_cost"] # fallback: preço médio
+            is_usd = (h["moeda"] == "USD")
+            
+            # Preço unitário histórico
+            price_unit = h["avg_cost"] # fallback: preço médio
+            from_yfinance = False
+            
             if norm_t in hist_prices.columns:
                 p_val = hist_prices.loc[date, norm_t]
-                if not pd.isna(p_val):
-                    price = float(p_val)
+                if not pd.isna(p_val) and float(p_val) > 0.0:
+                    price_unit = float(p_val)
+                    from_yfinance = True
                     
-            total_market_value += h["qty"] * price
-            total_invested_capital += h["invested"]
+            # Se for USD, precisamos lidar com a conversão para BRL
+            if is_usd:
+                # Compara o custo unitário na planilha com a cotação do yfinance (que é sempre em USD)
+                # para detectar se os valores da planilha já estão em BRL ou se estão em USD.
+                is_planilha_em_brl = False
+                if from_yfinance and price_unit > 0:
+                    if h["avg_cost"] > price_unit * 2.5:
+                        is_planilha_em_brl = True
+                else:
+                    # Se não veio do yfinance (fallback), estimamos pelo valor nominal do avg_cost
+                    if h["avg_cost"] >= 1000.0:
+                        is_planilha_em_brl = True
+                
+                if is_planilha_em_brl:
+                    # Custo investido já está em BRL na planilha
+                    invested_brl = h["invested"]
+                    # Cotação histórica em USD do yfinance convertida para BRL
+                    price_brl = price_unit * usd_rate_today if from_yfinance else price_unit
+                else:
+                    # Custo investido está em USD e precisa ser convertido para BRL
+                    invested_brl = h["invested"] * usd_rate_today
+                    # Cotação histórica em USD convertida para BRL
+                    price_brl = price_unit * usd_rate_today
+            else:
+                price_brl = price_unit
+                invested_brl = h["invested"]
+                
+            total_market_value += qty_historica_ajustada * price_brl
+            total_invested_capital += invested_brl
             
+        # Detecção e logging de anomalias de rentabilidade histórica
+        if total_invested_capital > 0:
+            retorno_dia = (total_market_value / total_invested_capital - 1.0) * 100.0
+            if retorno_dia > 200.0:  # Rentabilidade diária > 200% é sinal de erro contábil/anomalia
+                logger.warning(f"⚠️ ANOMALIA em {date.strftime('%d/%m/%Y')}! Retorno: {retorno_dia:.2f}% | Mercado: R$ {total_market_value:,.2f} | Investido: R$ {total_invested_capital:,.2f}")
+                # Lista os ativos do dia que estão compondo essa anomalia
+                for t_name, h_info in holdings.items():
+                    if h_info["qty"] <= 0:
+                        continue
+                    # Calcula o multiplicador de split para o log
+                    m_split = 1.0
+                    for (s_ticker, s_data_str), s_fator in splits_oficiais.items():
+                        if s_ticker == t_name:
+                            s_date = datetime.datetime.strptime(s_data_str, "%Y-%m-%d").date()
+                            if date.date() < s_date:
+                                m_split *= s_fator
+                    q_ajust = h_info["qty"] * m_split
+                    logger.warning(f"   ➔ Ativo: {t_name} | Qtd real: {h_info['qty']} | Qtd ajustada: {q_ajust} | Investido BRL: R$ {h_info['invested']:,.2f}")
+                    
+        # Calcula rentabilidade pelo método de Cotas (TWR)
+        fluxo_hoje = 0.0
+        ordens_no_dia = df[df["data envio"].dt.date == date.date()]
+        if not ordens_no_dia.empty:
+            for _, row in ordens_no_dia.iterrows():
+                action = str(row.get("Compra/Venda", "")).strip().upper()
+                qty = float(row.get("Qtd Executada", 0))
+                total_spent = float(row.get("Total líquido", 0))
+                moeda = str(row.get("Moeda", "BRL")).strip().upper()
+                
+                # Taxa de câmbio para converter fluxos em USD
+                usd_rate_today = 5.0
+                if "USDBRL=X" in hist_prices.columns:
+                    val = hist_prices.loc[date, "USDBRL=X"]
+                    if isinstance(val, pd.Series):
+                        val = val.iloc[0] if not val.empty else 5.0
+                    usd_rate_today = float(val)
+                    if pd.isna(usd_rate_today) or usd_rate_today <= 0:
+                        usd_rate_today = 5.0
+                
+                if moeda == "USD":
+                    is_planilha_em_brl = False
+                    if total_spent >= 1000.0 or (qty > 0 and (total_spent / qty) > 15.0):
+                        is_planilha_em_brl = True
+                    
+                    if is_planilha_em_brl:
+                        flow_brl = total_spent
+                    else:
+                        flow_brl = total_spent * usd_rate_today
+                else:
+                    flow_brl = total_spent
+                    
+                if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO"]):
+                    fluxo_hoje += flow_brl
+                elif "VENDA" in action or action == "V":
+                    fluxo_hoje -= flow_brl
+
+        if valor_ontem > 0.01:
+            var_diaria = (total_market_value - fluxo_hoje) / valor_ontem - 1.0
+            if var_diaria < -0.9:
+                var_diaria = 0.0
+            cota_atual = cota_atual * (1.0 + var_diaria)
+        else:
+            if total_market_value > 0.0:
+                cota_atual = 1.0
+                
+        cota_values.append(cota_atual)
+        valor_ontem = total_market_value
+
         portfolio_values.append(total_market_value)
         invested_values.append(total_invested_capital)
         
@@ -344,18 +627,15 @@ def get_historical_performance(df_orders):
     perf_df["Capital Investido"] = invested_values
     perf_df["Lucro Bruto"] = perf_df["Valor de Mercado"] - perf_df["Capital Investido"]
     
-    # Rentabilidade da carteira baseada no valor acumulado
-    # Tratamento para evitar divisão por zero se a carteira começar zerada
-    perf_df["Retorno Carteira"] = (perf_df["Valor de Mercado"] / perf_df["Capital Investido"])
+    # Rentabilidade da carteira baseada no método de cotas acumuladas (TWR)
+    perf_df["Retorno Carteira"] = cota_values
     perf_df["Retorno Carteira"] = perf_df["Retorno Carteira"].fillna(1.0)
-    # Garante que comece em 1.0
+    
     if not perf_df.empty:
         perf_df.loc[perf_df.index[0], "Retorno Carteira"] = 1.0
         
-    # Junta os benchmarks
     perf_df = perf_df.join(bench_df)
     
-    # Transforma em formato percentual (-1 e * 100)
     comparison_cols = ["Retorno Carteira", "CDI", "IPCA"]
     if "Ibovespa" in bench_df.columns:
         comparison_cols.append("Ibovespa")

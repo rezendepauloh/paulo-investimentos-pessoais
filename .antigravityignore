@@ -1,0 +1,42 @@
+# Dependências e Ambientes Virtuais
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Configurações confidenciais e credenciais (Segurança e Preservação de Token)
+.env
+credentials.json
+.antigravity/
+
+# Cache de Ferramentas e IDEs
+.idea/
+.vscode/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Banco de Dados Local e Outputs
+*.db
+*.sqlite
+dist/
+build/
+*.log
+*.tmp
+*.bak
+
+# Arquivos Multimídia, Documentos e Planilhas locais
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.pdf
+*.csv
+*.xlsx
+*.zip
+*.tar.gz
+*.gz
