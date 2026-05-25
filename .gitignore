@@ -1,0 +1,23 @@
+# Segurança - Arquivos Confidenciais
+.env
+credentials.json
+.streamlit/secrets.toml
+
+# Python e Ambientes Virtuais
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# IDEs e Sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
