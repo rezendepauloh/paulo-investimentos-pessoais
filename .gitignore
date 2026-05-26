@@ -21,9 +21,14 @@ env/
 .DS_Store
 Thumbs.db
 *.log
+/logs
 
 # Arquivos gerados e relatórios temporários
 scripts/Planilha de Ordens - Ajustada.csv
 scripts/Planilha de Ordens - Ordens.csv
 scripts/saida_ajustar_splits.md
 scripts/saida-correcao-planilha.md
+
+# Banco de dados local SQLite
+data/
+*.db

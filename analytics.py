@@ -19,8 +19,10 @@ log_handler.setFormatter(log_formatter)
 
 logger = logging.getLogger("Analytics")
 logger.setLevel(logging.INFO)
-logger.addHandler(log_handler)
+if not logger.handlers:
+    logger.addHandler(log_handler)
 
+@st.cache_data(ttl=86400)
 def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
     """
     Busca a taxa CDI diária (Série 12 do SGS/BCB) no intervalo de datas,
@@ -62,6 +64,7 @@ def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
     fator = (1.0 + daily_rate) ** np.arange(1, len(dates) + 1)
     return pd.Series(fator, index=dates)
 
+@st.cache_data(ttl=86400)
 def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
     """
     Busca o IPCA mensal (Série 433 do SGS/BCB) no intervalo de datas,
@@ -338,9 +341,14 @@ def get_historical_performance(df_orders):
     Reconstrói a série temporal da carteira dia a dia e calcula os retornos acumulados.
     Compara a carteira com CDI, IPCA, Ibovespa e S&P 500 desde a data do primeiro investimento.
     """
+    import time
+    t_start = time.time()
+    logger.info("🏁 Iniciando get_historical_performance()...")
+    
     # Ordena ordens cronologicamente, removendo linhas sem data válida
     df = df_orders.dropna(subset=["data envio"]).sort_values("data envio").copy()
     if df.empty:
+        logger.info("get_historical_performance(): df_orders está vazio.")
         return pd.DataFrame()
         
     # Pré-calcula a quantidade consolidada de splits (desdobramentos e bonificações) por ativo
@@ -349,6 +357,7 @@ def get_historical_performance(df_orders):
         
     min_date = df["data envio"].min()
     if pd.isna(min_date) or min_date is pd.NaT:
+        logger.info("get_historical_performance(): min_date inválida.")
         return pd.DataFrame()
         
     start_date = min_date.date()
@@ -356,6 +365,7 @@ def get_historical_performance(df_orders):
     
     # Criar um índice de datas completo do início ao fim
     date_range = pd.date_range(start=start_date, end=end_date)
+    logger.info(f"📅 Período analisado: {start_date} até {end_date} ({len(date_range)} dias corridos)")
     
     # Busca cotações históricas de todos os ativos listados
     tickers = df["Papel"].unique()
@@ -378,38 +388,264 @@ def get_historical_performance(df_orders):
     if has_usd_assets:
         normalized_tickers.append("USDBRL=X")
             
-    # Baixa histórico dos ativos em lote
-    hist_prices = pd.DataFrame(index=date_range)
-    if normalized_tickers:
+    # Sincronização Delta e Ingestão Incremental no SQLite local
+    tickers_para_cache = list(normalized_tickers)
+    for b_tick in ["^BVSP", "^GSPC"]:
+        if b_tick not in tickers_para_cache:
+            tickers_para_cache.append(b_tick)
+    if "USDBRL=X" not in tickers_para_cache:
+        tickers_para_cache.append("USDBRL=X")
+        
+    import db_manager
+    db_conn = db_manager.get_db_connection()
+    hoje = datetime.date.today()
+    
+    # Cooldown de 1 hora para sincronização automática de cotações para evitar sobrecarga de rede e CPU
+    ignorar_download_por_cooldown = False
+    try:
+        cursor = db_conn.cursor()
+        cursor.execute("CREATE TABLE IF NOT EXISTS sync_metadata (chave TEXT PRIMARY KEY, valor TEXT)")
+        db_conn.commit()
+        
+        cursor.execute("SELECT valor FROM sync_metadata WHERE chave = 'last_yfinance_sync'")
+        row = cursor.fetchone()
+        if row:
+            last_yf_sync = datetime.datetime.strptime(row[0], "%d/%m/%Y %H:%M:%S")
+            # Cooldown de 1 hora (3600 segundos)
+            if (datetime.datetime.now() - last_yf_sync).total_seconds() < 3600:
+                ignorar_download_por_cooldown = True
+                logger.info("⏳ Cooldown do Yahoo Finance ativo (última sincronização há menos de 1 hora). Ignorando consultas externas e lendo cotações locais.")
+    except Exception as e:
+        logger.error(f"Erro ao verificar cooldown do Yahoo Finance: {e}")
+        
+    tickers_download_info = {}
+    
+    for t_symbol in tickers_para_cache:
         try:
-            # Baixa preços de fechamento diários dos últimos anos
-            data = yf.download(" ".join(normalized_tickers), start=start_date.strftime("%Y-%m-%d"), progress=False, timeout=15)
-            if len(normalized_tickers) == 1:
-                hist_prices[normalized_tickers[0]] = data["Close"]
-            else:
-                for nt in normalized_tickers:
-                    if nt in data.columns.levels[1]:
-                        hist_prices[nt] = data["Close"][nt]
+            # Se o cooldown está ativo, não consultamos APIs externas no carregamento automático
+            if ignorar_download_por_cooldown:
+                continue
+                
+            # Verifica se o ticker está na lista de falhas definitivas (delisted) para evitar retentativas
+            cursor = db_conn.cursor()
+            cursor.execute("SELECT 1 FROM failed_tickers WHERE ticker = ?", (t_symbol,))
+            if cursor.fetchone():
+                continue
+                
+            # 1. Verifica cotações locais já existentes no SQLite
+            df_local = pd.read_sql_query(
+                "SELECT data, preco_fechamento FROM precos_historicos WHERE ticker = ? ORDER BY data",
+                db_conn,
+                params=(t_symbol,)
+            )
+            
+            fazer_download = True
+            download_start = start_date
+            
+            if not df_local.empty:
+                df_local["data"] = pd.to_datetime(df_local["data"])
+                max_data_local = df_local["data"].max().date()
+                min_data_local = df_local["data"].min().date()
+                
+                # Se temos dados locais desde o start_date até ontem/hoje, pula o download
+                ontem = hoje - datetime.timedelta(days=1)
+                if min_data_local <= start_date and max_data_local >= ontem:
+                    fazer_download = False
+                else:
+                    # Sincroniza apenas do dia seguinte ao último registro em diante
+                    download_start = max_data_local + datetime.timedelta(days=1)
+                    if download_start >= hoje:
+                        fazer_download = False
+                        
+            if fazer_download:
+                tickers_download_info[t_symbol] = download_start
+        except Exception as ex:
+            logger.error(f"Erro ao verificar cache local de {t_symbol}: {ex}")
+            
+    if tickers_download_info:
+        # Tenta download em lote para máxima performance
+        min_start = min(tickers_download_info.values())
+        tickers_list = list(tickers_download_info.keys())
+        
+        logger.info(f"📥 Baixando cotações em lote para {len(tickers_list)} ativos de {min_start} até {hoje}...")
+        
+        try:
+            df_batch = yf.download(tickers_list, start=min_start.strftime("%Y-%m-%d"), end=hoje.strftime("%Y-%m-%d"), progress=False, group_by="ticker", timeout=25)
+            
+            for t_symbol in list(tickers_download_info.keys()):
+                try:
+                    df_t = None
+                    if len(tickers_list) == 1:
+                        df_t = df_batch
+                    elif t_symbol in df_batch.columns.levels[0]:
+                        df_t = df_batch[t_symbol]
+                        
+                    if df_t is not None and not df_t.empty:
+                        prices_list = []
+                        close_col = None
+                        if "Close" in df_t.columns:
+                            close_col = df_t["Close"]
+                        elif "close" in df_t.columns:
+                            close_col = df_t["close"]
+                            
+                        if close_col is not None:
+                            d_start = tickers_download_info[t_symbol]
+                            for timestamp, price in close_col.items():
+                                if pd.isna(price) or float(price) <= 0:
+                                    continue
+                                if timestamp.date() < d_start:
+                                    continue
+                                date_str = timestamp.strftime("%Y-%m-%d")
+                                prices_list.append((t_symbol, date_str, float(price)))
+                                
+                            if prices_list:
+                                rows_saved = db_manager.save_historical_prices(prices_list)
+                                logger.info(f"✅ Salvas com sucesso {rows_saved} cotações para {t_symbol} no banco SQLite (lote).")
+                                tickers_download_info.pop(t_symbol, None) # Removido com sucesso
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro ao processar ticker {t_symbol} no lote: {e}. Será tentado individualmente.")
         except Exception as e:
-            st.warning(f"Erro ao baixar dados históricos de cotações: {e}")
+            logger.warning(f"⚠️ Falha no download em lote: {e}. Caindo de volta para downloads individuais.")
+            
+        # Fallback individual para qualquer ticker pendente
+        for t_symbol, d_start in tickers_download_info.items():
+            try:
+                logger.info(f"📥 [Fallback] Baixando cotações delta de {t_symbol} ({d_start} até {hoje})...")
+                df_new = yf.download(t_symbol, start=d_start.strftime("%Y-%m-%d"), end=hoje.strftime("%Y-%m-%d"), progress=False, timeout=15)
+                
+                if df_new.empty:
+                    # Se o banco local estava vazio (d_start == start_date), significa que o ativo é delisted/inválido no yfinance
+                    # Nós o registramos no failed_tickers para nunca mais tentar baixar o histórico de 10 anos
+                    if d_start == start_date:
+                        logger.warning(f"⚠️ [Fallback] Resposta do yfinance para {t_symbol} retornou vazia e sem dados locais. Registrando em failed_tickers (delisted).")
+                        try:
+                            cursor = db_conn.cursor()
+                            cursor.execute("INSERT OR IGNORE INTO failed_tickers (ticker) VALUES (?)", (t_symbol,))
+                            db_conn.commit()
+                        except Exception as e:
+                            logger.error(f"Erro ao registrar ticker falho no SQLite: {e}")
+                    else:
+                        logger.warning(f"⚠️ [Fallback] Resposta do yfinance para {t_symbol} retornou vazia (provável feriado/fim de semana). Ignorando sem corromper dados.")
+                    continue
+                    
+                prices_list = []
+                close_col = None
+                if isinstance(df_new, pd.Series):
+                    close_col = df_new
+                elif isinstance(df_new, pd.DataFrame):
+                    if isinstance(df_new.columns, pd.MultiIndex):
+                        if 'Close' in df_new.columns.levels[0]:
+                            close_col = df_new['Close']
+                        elif 'close' in df_new.columns.levels[0]:
+                            close_col = df_new['close']
+                    else:
+                        if "Close" in df_new.columns:
+                            close_col = df_new["Close"]
+                        elif "close" in df_new.columns:
+                            close_col = df_new["close"]
+                            
+                if close_col is not None:
+                    if isinstance(close_col, pd.DataFrame):
+                        if t_symbol in close_col.columns:
+                            close_col = close_col[t_symbol]
+                        else:
+                            close_col = close_col.iloc[:, 0]
+                            
+                    for timestamp, price in close_col.items():
+                        if pd.isna(price) or float(price) <= 0:
+                            continue
+                        date_str = timestamp.strftime("%Y-%m-%d")
+                        prices_list.append((t_symbol, date_str, float(price)))
+                        
+                    if prices_list:
+                        rows_saved = db_manager.save_historical_prices(prices_list)
+                        logger.info(f"✅ Salvas com sucesso {rows_saved} cotações para {t_symbol} no banco SQLite (individual).")
+                    else:
+                        if d_start == start_date:
+                            try:
+                                cursor = db_conn.cursor()
+                                cursor.execute("INSERT OR IGNORE INTO failed_tickers (ticker) VALUES (?)", (t_symbol,))
+                                db_conn.commit()
+                            except Exception as e:
+                                logger.error(f"Erro ao registrar ticker falho no SQLite: {e}")
+            except Exception as ex:
+                logger.error(f"Erro no fallback individual de {t_symbol}: {ex}")
+        
+        # Registra o sucesso do sync do yfinance para iniciar o cooldown de 1 hora
+        try:
+            cursor = db_conn.cursor()
+            now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            cursor.execute("INSERT OR REPLACE INTO sync_metadata (chave, valor) VALUES ('last_yfinance_sync', ?)", (now_str,))
+            db_conn.commit()
+            logger.info("✅ Timestamp de sincronização de cotações salvo com sucesso. Cooldown de 1 hora ativado.")
+        except Exception as e:
+            logger.error(f"Erro ao salvar timestamp do sync do yfinance no banco: {e}")
+            
+    t_after_sync = time.time()
+    logger.info(f"⚡ [TIMER] Sincronização Delta / Ingestão yfinance levou {t_after_sync - t_start:.2f} segundos.")
+    
+    # 2. Reconstrói hist_prices e hist_bench a partir do SQLite local
+    hist_prices = pd.DataFrame(index=date_range)
+    logger.info("🔍 Reconstruindo série temporal de preços a partir do SQLite local...")
+    for nt in normalized_tickers:
+        try:
+            df_t = pd.read_sql_query(
+                "SELECT data, preco_fechamento FROM precos_historicos WHERE ticker = ? ORDER BY data",
+                db_conn,
+                params=(nt,)
+            )
+            if not df_t.empty:
+                df_t["data"] = pd.to_datetime(df_t["data"])
+                df_t = df_t.set_index("data").reindex(date_range).ffill().bfill()
+                hist_prices[nt] = df_t["preco_fechamento"]
+                logger.info(f"   ➔ Ativo {nt}: {len(df_t)} cotações recuperadas do SQLite local.")
+            else:
+                logger.warning(f"   ➔ Ativo {nt}: NENHUMA cotação encontrada no SQLite local! Utilizará fallback.")
+        except Exception as e:
+            logger.error(f"Erro ao recuperar cotações de {nt} do SQLite: {e}")
             
     # Preenche feriados e fins de semana nas cotações históricas
     hist_prices = hist_prices.ffill().bfill()
-    
-    # Se a coluna do dólar existir, garante que não tenha NaNs
     if "USDBRL=X" in hist_prices.columns:
         hist_prices["USDBRL=X"] = hist_prices["USDBRL=X"].ffill().bfill().fillna(5.0)
-    
-    # Calcula cotações históricas dos índices benchmark
-    benchmarks = {"^BVSP": "Ibovespa", "^GSPC": "S&P 500"}
+    else:
+        try:
+            df_usd = pd.read_sql_query("SELECT data, preco_fechamento FROM precos_historicos WHERE ticker = 'USDBRL=X' ORDER BY data", db_conn)
+            if not df_usd.empty:
+                df_usd["data"] = pd.to_datetime(df_usd["data"])
+                df_usd = df_usd.set_index("data").reindex(date_range).ffill().bfill()
+                hist_prices["USDBRL=X"] = df_usd["preco_fechamento"]
+                logger.info(f"   ➔ Taxa USD/BRL recuperada com sucesso do SQLite.")
+            else:
+                hist_prices["USDBRL=X"] = 5.0
+                logger.warning("   ➔ Taxa USD/BRL ausente no SQLite! Usando fallback fixo de 5.0.")
+        except Exception:
+            hist_prices["USDBRL=X"] = 5.0
+            
+    # Reconstrói benchmarks
     hist_bench = pd.DataFrame(index=date_range)
+    benchmarks = {"^BVSP": "Ibovespa", "^GSPC": "S&P 500"}
     for b_ticker, b_name in benchmarks.items():
         try:
-            b_data = yf.download(b_ticker, start=start_date.strftime("%Y-%m-%d"), progress=False, timeout=10)
-            hist_bench[b_name] = b_data["Close"]
-        except Exception:
-            pass
-    hist_bench = hist_bench.ffill().bfill()
+            df_b = pd.read_sql_query(
+                "SELECT data, preco_fechamento FROM precos_historicos WHERE ticker = ? ORDER BY data",
+                db_conn,
+                params=(b_ticker,)
+            )
+            if not df_b.empty:
+                df_b["data"] = pd.to_datetime(df_b["data"])
+                df_b = df_b.set_index("data").reindex(date_range).ffill().bfill()
+                hist_bench[b_name] = df_b["preco_fechamento"]
+                logger.info(f"   ➔ Benchmark {b_name} ({b_ticker}): {len(df_b)} registros recuperados do SQLite.")
+            else:
+                logger.warning(f"   ➔ Benchmark {b_name} ({b_ticker}): NENHUM registro no SQLite!")
+        except Exception as e:
+            logger.error(f"Erro ao recuperar benchmark {b_name} do SQLite: {e}")
+            
+    db_conn.close()
+    
+    t_after_rebuild = time.time()
+    logger.info(f"⚡ [TIMER] Reconstrução de série de preços/benchmarks do SQLite levou {t_after_rebuild - t_after_sync:.2f} segundos.")
     
     # Normaliza Benchmarks de Mercado para iniciarem em 1.0 (100%) no primeiro dia
     for col in hist_bench.columns:
@@ -420,6 +656,9 @@ def get_historical_performance(df_orders):
     cdi_factor = get_historical_cdi(start_date, end_date)
     ipca_factor = get_historical_ipca(start_date, end_date)
     
+    t_after_macro = time.time()
+    logger.info(f"⚡ [TIMER] Obtendo CDI e IPCA do Banco Central/Cache levou {t_after_macro - t_after_rebuild:.2f} segundos.")
+    
     # Junta os benchmarks de CDI e IPCA
     bench_df = hist_bench.copy()
     bench_df["CDI"] = cdi_factor
@@ -428,48 +667,68 @@ def get_historical_performance(df_orders):
     bench_df["CDI"] = bench_df["CDI"] / bench_df["CDI"].iloc[0]
     bench_df["IPCA"] = bench_df["IPCA"] / bench_df["IPCA"].iloc[0]
     
-    # Agora calculamos o valor da carteira dia a dia
+    # Pré-carrega splits oficiais uma única vez antes do loop diário (Grande otimização!)
+    splits_oficiais = {}
+    splits_env = os.getenv("SPLITS_OFICIAIS", "{}")
+    try:
+        splits_dict = json.loads(splits_env)
+        splits_oficiais = {tuple(k.split("|")): float(v) for k, v in splits_dict.items()}
+        logger.info(f"⚙️ Carregados {len(splits_oficiais)} splits oficiais do .env para processamento.")
+    except Exception as e:
+        logger.error(f"Erro ao carregar SPLITS_OFICIAIS do .env: {e}")
+        
+    # Agora calculamos o valor da carteira dia a dia de forma incremental ultra-rápida (O(N + M))
     portfolio_values = []
     invested_values = []
     cota_values = []
     cota_atual = 1.0
     valor_ontem = 0.0
     
+    # Agrupa ordens por data para acesso instantâneo em O(1)
+    df_date_grouped = df.groupby(df["data envio"].dt.date)
+    
+    logger.info("🔄 Iniciando loop diário de cálculo de rentabilidade incremental...")
+    t_start_loop = time.time()
+    
+    holdings = {}
+    has_any_orders = False
+    
     for date in date_range:
-        # Filtra ordens até esta data
-        ordens_ate_hoje = df[df["data envio"].dt.date <= date.date()]
+        current_date_date = date.date()
         
-        if ordens_ate_hoje.empty:
+        # Se houver ordens nesta data específica, atualiza o holdings incrementalmente
+        if current_date_date in df_date_grouped.groups:
+            has_any_orders = True
+            ordens_no_dia = df_date_grouped.get_group(current_date_date)
+            for _, row in ordens_no_dia.iterrows():
+                action = str(row.get("Compra/Venda", "")).strip().upper()
+                ticker = str(row.get("Papel", "")).strip().upper()
+                qty = float(row.get("Qtd Executada", 0))
+                total_spent = float(row.get("Total líquido", 0))
+                price_avg_unit = float(row.get("Preço médio + corretagem", 0))
+                moeda = str(row.get("Moeda", "BRL")).strip().upper()
+                
+                if ticker not in holdings:
+                    holdings[ticker] = {"qty": 0.0, "invested": 0.0, "avg_cost": 0.0, "moeda": moeda}
+                    
+                h = holdings[ticker]
+                if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
+                    new_qty = h["qty"] + qty
+                    new_invested = h["invested"] + total_spent
+                    h["avg_cost"] = new_invested / new_qty if new_qty > 0 else 0.0
+                    h["qty"] = new_qty
+                    h["invested"] = new_invested
+                elif "VENDA" in action or action == "V":
+                    new_qty = max(0.0, h["qty"] - qty)
+                    h["qty"] = new_qty
+                    h["invested"] = new_qty * h["avg_cost"]
+                    
+        if not has_any_orders:
             portfolio_values.append(0.0)
             invested_values.append(0.0)
             cota_values.append(1.0)
             continue
             
-        # Calcula a posição atualizada até esta data
-        holdings = {}
-        for _, row in ordens_ate_hoje.iterrows():
-            action = str(row.get("Compra/Venda", "")).strip().upper()
-            ticker = str(row.get("Papel", "")).strip().upper()
-            qty = float(row.get("Qtd Executada", 0))
-            total_spent = float(row.get("Total líquido", 0))
-            price_avg_unit = float(row.get("Preço médio + corretagem", 0))
-            moeda = str(row.get("Moeda", "BRL")).strip().upper()
-            
-            if ticker not in holdings:
-                holdings[ticker] = {"qty": 0.0, "invested": 0.0, "avg_cost": 0.0, "moeda": moeda}
-                
-            h = holdings[ticker]
-            if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
-                new_qty = h["qty"] + qty
-                new_invested = h["invested"] + total_spent
-                h["avg_cost"] = new_invested / new_qty if new_qty > 0 else 0.0
-                h["qty"] = new_qty
-                h["invested"] = new_invested
-            elif "VENDA" in action or action == "V":
-                new_qty = max(0.0, h["qty"] - qty)
-                h["qty"] = new_qty
-                h["invested"] = new_qty * h["avg_cost"]
-                
         # Calcula valor total e valor investido na data
         total_market_value = 0.0
         total_invested_capital = 0.0
@@ -483,15 +742,6 @@ def get_historical_performance(df_orders):
             usd_rate_today = float(val)
             if pd.isna(usd_rate_today) or usd_rate_today <= 0:
                 usd_rate_today = 5.0
-        
-        splits_oficiais = {}
-        splits_env = os.getenv("SPLITS_OFICIAIS", "{}")
-        try:
-            splits_dict = json.loads(splits_env)
-            # Converte a chave "TICKER|DATA" para a tupla (TICKER, DATA)
-            splits_oficiais = {tuple(k.split("|")): float(v) for k, v in splits_dict.items()}
-        except Exception as e:
-            logger.error(f"Erro ao carregar SPLITS_OFICIAIS do .env: {e}")
         
         for ticker, h in holdings.items():
             if h["qty"] <= 0:
@@ -572,8 +822,8 @@ def get_historical_performance(df_orders):
                     
         # Calcula rentabilidade pelo método de Cotas (TWR)
         fluxo_hoje = 0.0
-        ordens_no_dia = df[df["data envio"].dt.date == date.date()]
-        if not ordens_no_dia.empty:
+        if current_date_date in df_date_grouped.groups:
+            ordens_no_dia = df_date_grouped.get_group(current_date_date)
             for _, row in ordens_no_dia.iterrows():
                 action = str(row.get("Compra/Venda", "")).strip().upper()
                 qty = float(row.get("Qtd Executada", 0))
@@ -634,6 +884,9 @@ def get_historical_performance(df_orders):
     if not perf_df.empty:
         perf_df.loc[perf_df.index[0], "Retorno Carteira"] = 1.0
         
+    t_after_loop = time.time()
+    logger.info(f"⚡ [TIMER] Loop diário de cálculo de rentabilidade levou {t_after_loop - t_start_loop:.2f} segundos.")
+    
     perf_df = perf_df.join(bench_df)
     
     comparison_cols = ["Retorno Carteira", "CDI", "IPCA"]
@@ -645,4 +898,5 @@ def get_historical_performance(df_orders):
     for col in comparison_cols:
         perf_df[f"{col} Acumulado (%)"] = (perf_df[col] - 1.0) * 100.0
         
+    logger.info(f"🏁 Fim de get_historical_performance(). Tempo Total: {time.time() - t_start:.2f} segundos.")
     return perf_df

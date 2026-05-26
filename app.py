@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Importações internas
-from data_loader import get_budget_data, get_orders_data
+import db_manager
+from data_loader import get_budget_data, get_orders_data, sync_google_sheets_to_sqlite
 from analytics import calculate_portfolio_holdings, get_historical_performance
 from ai_allocator import generate_allocation_tips
 
@@ -131,6 +132,22 @@ with st.sidebar:
     # Instruções de Setup para a Conta de Serviço (apenas se selecionar Dados Reais)
     if not use_mock:
         st.markdown("---")
+        st.subheader("🔄 Sincronização Local")
+        
+        last_sync = db_manager.get_last_sync_time()
+        st.info(f"Última sincronização:\n**{last_sync}**")
+        
+        if st.button("🔄 Sincronizar Google Sheets", use_container_width=True, help="Baixa lançamentos e ordens mais recentes do Sheets de forma incremental e atualiza o SQLite local."):
+            with st.spinner("Sincronizando dados incrementalmente..."):
+                try:
+                    sync_google_sheets_to_sqlite()
+                    st.cache_data.clear()
+                    st.success("✅ Sincronização delta realizada com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro na sincronização: {e}")
+                    
+        st.markdown("---")
         st.subheader("🔑 Configuração da Conta de Serviço")
         
         # Verifica se o arquivo de credenciais existe
@@ -200,15 +217,37 @@ with tab1:
     if df_holdings.empty:
         st.warning("Nenhuma ordem ativa na carteira de investimentos.")
     else:
+        # Função para filtrar lançamentos ocorridos (Dias até = Já creditado/debitado ou <= 0)
+        def filter_realized(df_budget, col_dias):
+            if df_budget.empty:
+                return df_budget
+            if col_dias not in df_budget.columns:
+                return df_budget
+            def check_realized(val):
+                v_str = str(val).strip().upper()
+                if "FALTAM" in v_str:
+                    return False
+                try:
+                    if float(v_str.replace(",", ".")) > 0:
+                        return False
+                except ValueError:
+                    pass
+                return True
+            return df_budget[df_budget[col_dias].apply(check_realized)]
+            
+        # Filtra lançamentos orçamentários efetivamente realizados
+        df_receitas_realized = filter_realized(df_receitas, "Dias até")
+        df_despesas_realized = filter_realized(df_despesas, "Dias até")
+
         # Métricas Globais
         total_market_val = df_holdings["valor_atual"].sum()
         total_invested = df_holdings["total_investido"].sum()
         total_profit = total_market_val - total_invested
         total_return_pct = (total_profit / total_invested) * 100.0 if total_invested > 0 else 0.0
         
-        # Fluxo de caixa recente
-        total_receitas = df_receitas["Valor"].sum() if not df_receitas.empty else 0.0
-        total_despesas = df_despesas["Valor"].sum() if not df_despesas.empty else 0.0
+        # Fluxo de caixa recente (apenas realizados)
+        total_receitas = df_receitas_realized["Valor"].sum() if not df_receitas_realized.empty else 0.0
+        total_despesas = df_despesas_realized["Valor"].sum() if not df_despesas_realized.empty else 0.0
         total_proventos = df_dividendos["Valor"].sum() if not df_dividendos.empty else 0.0
         saving_rate = total_receitas - total_despesas
         saving_pct = (saving_rate / total_receitas * 100.0) if total_receitas > 0 else 0.0
@@ -377,63 +416,69 @@ with tab1:
             else:
                 st.info("Nenhum dividendo lançado recentemente.")
 
-        # Gráficos de Categorias de Receitas e Despesas
-        st.markdown("### 🏷️ Categorias de Orçamento (Receitas e Despesas)")
+        # Gráficos de Categorias de Receitas e Despesas (Princípio da Competência Ocorrida)
+        st.markdown("### 🏷️ Categorias de Orçamento Realizadas (Receitas e Despesas)")
         col_cat1, col_cat2 = st.columns(2)
         
         with col_cat1:
-            st.subheader("Receitas por Categoria")
+            st.subheader("Receitas por Categoria (Realizadas)")
             if not df_receitas.empty:
-                df_rec_cat = df_receitas.groupby("Categoria")["Valor"].sum().reset_index()
-                fig_rec_cat = px.pie(
-                    df_rec_cat,
-                    names="Categoria",
-                    values="Valor",
-                    hole=0.4,
-                    color_discrete_sequence=px.colors.qualitative.Prism
-                )
-                fig_rec_cat.update_traces(
-                    textposition='inside', 
-                    textinfo='percent+label',
-                    hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
-                )
-                fig_rec_cat.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font_color="#ffffff",
-                    showlegend=False,
-                    margin=dict(t=10, b=10, l=10, r=10),
-                    separators=",."
-                )
-                st.plotly_chart(fig_rec_cat, width='stretch')
+                if not df_receitas_realized.empty:
+                    df_rec_cat = df_receitas_realized.groupby("Categoria")["Valor"].sum().reset_index()
+                    fig_rec_cat = px.pie(
+                        df_rec_cat,
+                        names="Categoria",
+                        values="Valor",
+                        hole=0.4,
+                        color_discrete_sequence=px.colors.qualitative.Prism
+                    )
+                    fig_rec_cat.update_traces(
+                        textposition='inside', 
+                        textinfo='percent+label',
+                        hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                    )
+                    fig_rec_cat.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ffffff",
+                        showlegend=False,
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        separators=",."
+                    )
+                    st.plotly_chart(fig_rec_cat, width='stretch')
+                else:
+                    st.info("Nenhuma receita realizada até o momento.")
             else:
                 st.info("Nenhuma receita lançada para categorização.")
                 
         with col_cat2:
-            st.subheader("Despesas por Categoria")
+            st.subheader("Despesas por Categoria (Realizadas)")
             if not df_despesas.empty:
-                df_desp_cat = df_despesas.groupby("Categoria")["Valor"].sum().reset_index()
-                fig_desp_cat = px.pie(
-                    df_desp_cat,
-                    names="Categoria",
-                    values="Valor",
-                    hole=0.4,
-                    color_discrete_sequence=px.colors.qualitative.Set2
-                )
-                fig_desp_cat.update_traces(
-                    textposition='inside', 
-                    textinfo='percent+label',
-                    hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
-                )
-                fig_desp_cat.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font_color="#ffffff",
-                    showlegend=False,
-                    margin=dict(t=10, b=10, l=10, r=10),
-                    separators=",."
-                )
-                st.plotly_chart(fig_desp_cat, width='stretch')
+                if not df_despesas_realized.empty:
+                    df_desp_cat = df_despesas_realized.groupby("Categoria")["Valor"].sum().reset_index()
+                    fig_desp_cat = px.pie(
+                        df_desp_cat,
+                        names="Categoria",
+                        values="Valor",
+                        hole=0.4,
+                        color_discrete_sequence=px.colors.qualitative.Set2
+                    )
+                    fig_desp_cat.update_traces(
+                        textposition='inside', 
+                        textinfo='percent+label',
+                        hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                    )
+                    fig_desp_cat.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ffffff",
+                        showlegend=False,
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        separators=",."
+                    )
+                    st.plotly_chart(fig_desp_cat, width='stretch')
+                else:
+                    st.info("Nenhuma despesa realizada até o momento.")
             else:
                 st.info("Nenhuma despesa lançada para categorização.")
 
