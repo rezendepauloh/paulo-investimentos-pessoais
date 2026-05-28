@@ -160,12 +160,12 @@ def get_mock_data():
     df_receitas["Dias até"] = df_receitas["Dias até"].astype(int)
 
     despesas_data = [
-        {"Nome": "Aluguel & Condomínio", "Valor": 2800.0, "Categoria": "Moradia", "Conta debitada": "Itaú", "Gasto em": "02/05/2026", "Dias até": 0, "Tipo de Cobrança": "Fixo"},
-        {"Nome": "Supermercado", "Valor": 1100.0, "Categoria": "Alimentação", "Conta debitada": "Nubank", "Gasto em": "10/05/2026", "Dias até": 0, "Tipo de Cobrança": "Variável"},
-        {"Nome": "Combustível", "Valor": 450.0, "Categoria": "Transporte", "Conta debitada": "Nubank", "Gasto em": "15/05/2026", "Dias até": 0, "Tipo de Cobrança": "Variável"},
-        {"Nome": "Academia", "Valor": 150.0, "Categoria": "Saúde", "Conta debitada": "Nubank", "Gasto em": "05/05/2026", "Dias até": 0, "Tipo de Cobrança": "Fixo"},
-        {"Nome": "Streaming & Internet", "Valor": 180.0, "Categoria": "Lazer", "Conta debitada": "Itaú", "Gasto em": "08/05/2026", "Dias até": 0, "Tipo de Cobrança": "Fixo"},
-        {"Nome": "Jantar Fora", "Valor": 350.0, "Categoria": "Lazer", "Conta debitada": "Nubank", "Gasto em": "20/05/2026", "Dias até": 0, "Tipo de Cobrança": "Variável"},
+        {"Nome": "Aluguel & Condomínio", "Valor": 2800.0, "Categoria": "Moradia", "Conta debitada": "Itaú", "Gasto em": "02/05/2026", "Dias até": 0, "Tipo de Cobrança": "Fixo", "Fixo vs. Variável": "Fixo", "Essencial vs. Não Essencial": "Essencial"},
+        {"Nome": "Supermercado", "Valor": 1100.0, "Categoria": "Alimentação", "Conta debitada": "Nubank", "Gasto em": "10/05/2026", "Dias até": 0, "Tipo de Cobrança": "Variável", "Fixo vs. Variável": "Variável", "Essencial vs. Não Essencial": "Essencial"},
+        {"Nome": "Combustível", "Valor": 450.0, "Categoria": "Transporte", "Conta debitada": "Nubank", "Gasto em": "15/05/2026", "Dias até": 0, "Tipo de Cobrança": "Variável", "Fixo vs. Variável": "Variável", "Essencial vs. Não Essencial": "Essencial"},
+        {"Nome": "Academia", "Valor": 150.0, "Categoria": "Saúde", "Conta debitada": "Nubank", "Gasto em": "05/05/2026", "Dias até": 0, "Tipo de Cobrança": "Fixo", "Fixo vs. Variável": "Fixo", "Essencial vs. Não Essencial": "Não essencial"},
+        {"Nome": "Streaming & Internet", "Valor": 180.0, "Categoria": "Lazer", "Conta debitada": "Itaú", "Gasto em": "08/05/2026", "Dias até": 0, "Tipo de Cobrança": "Fixo", "Fixo vs. Variável": "Fixo", "Essencial vs. Não Essencial": "Não essencial"},
+        {"Nome": "Jantar Fora", "Valor": 350.0, "Categoria": "Lazer", "Conta debitada": "Nubank", "Gasto em": "20/05/2026", "Dias até": 0, "Tipo de Cobrança": "Variável", "Fixo vs. Variável": "Variável", "Essencial vs. Não Essencial": "Não essencial"},
     ]
     df_despesas = pd.DataFrame(despesas_data)
     df_despesas["Gasto em"] = pd.to_datetime(df_despesas["Gasto em"], format="%d/%m/%Y")
@@ -183,12 +183,12 @@ def get_mock_data():
     df_dividendos["Dias até"] = df_dividendos["Dias até"].astype(int)
 
     ordens_data = [
-        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "WEGE3", "Qtd Executada": 100, "Preço médio": 35.0, "Total": 3500.0, "data envio": "15/01/2025 10:30:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 35.0, "Total líquido": 3500.0},
-        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "PETR4", "Qtd Executada": 150, "Preço médio": 28.0, "Total": 4200.0, "data envio": "18/01/2025 11:15:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 28.0, "Total líquido": 4200.0},
-        {"Compra/Venda": "Compra", "Tipo": "FIIs", "Moeda": "BRL", "Papel": "HGLG11", "Qtd Executada": 50, "Preço médio": 155.0, "Total": 7750.0, "data envio": "20/01/2025 14:00:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 155.0, "Total líquido": 7750.0},
-        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "VALE3", "Qtd Executada": 50, "Preço médio": 62.0, "Total": 3100.0, "data envio": "10/07/2025 10:45:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 62.0, "Total líquido": 3100.0},
-        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "WEGE3", "Qtd Executada": 50, "Preço médio": 38.5, "Total": 1925.0, "data envio": "12/07/2025 15:20:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 38.5, "Total líquido": 1925.0},
-        {"Compra/Venda": "Compra", "Tipo": "Internacional", "Moeda": "USD", "Papel": "IVV", "Qtd Executada": 10, "Preço médio": 480.0, "Total": 4800.0, "data envio": "05/01/2026 16:00:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 480.0, "Total líquido": 24000.0},
+        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "WEGE3", "Qtd Executada": 100, "Preço médio": 35.0, "Total": 3500.0, "data envio": "15/01/2025 10:30:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 35.0, "Total líquido": 3500.0, "Setor Econômico": "Bens Industriais / Máquinas"},
+        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "PETR4", "Qtd Executada": 150, "Preço médio": 28.0, "Total": 4200.0, "data envio": "18/01/2025 11:15:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 28.0, "Total líquido": 4200.0, "Setor Econômico": "Petróleo, Gás e Biocombustíveis"},
+        {"Compra/Venda": "Compra", "Tipo": "FIIs", "Moeda": "BRL", "Papel": "HGLG11", "Qtd Executada": 50, "Preço médio": 155.0, "Total": 7750.0, "data envio": "20/01/2025 14:00:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 155.0, "Total líquido": 7750.0, "Setor Econômico": "Imobiliário"},
+        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "VALE3", "Qtd Executada": 50, "Preço médio": 62.0, "Total": 3100.0, "data envio": "10/07/2025 10:45:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 62.0, "Total líquido": 3100.0, "Setor Econômico": "Materiais Básicos / Mineração"},
+        {"Compra/Venda": "Compra", "Tipo": "Ações", "Moeda": "BRL", "Papel": "WEGE3", "Qtd Executada": 50, "Preço médio": 38.5, "Total": 1925.0, "data envio": "12/07/2025 15:20:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 38.5, "Total líquido": 1925.0, "Setor Econômico": "Bens Industriais / Máquinas"},
+        {"Compra/Venda": "Compra", "Tipo": "Internacional", "Moeda": "USD", "Papel": "IVV", "Qtd Executada": 10, "Preço médio": 480.0, "Total": 4800.0, "data envio": "05/01/2026 16:00:00", "Cód. Cliente": "PAULO01", "Corretagem": 0.0, "Preço médio + corretagem": 480.0, "Total líquido": 24000.0, "Setor Econômico": "Tecnologia"},
     ]
     df_ordens = pd.DataFrame(ordens_data)
     df_ordens["data envio"] = pd.to_datetime(df_ordens["data envio"], format="%d/%m/%Y %H:%M:%S")
@@ -229,6 +229,8 @@ def clean_and_normalize_orders(df_orders):
             col_mapping[col] = "Preço médio + corretagem"
         elif c_lower in ["total líquido", "total liquido", "valor líquido", "valor liquido"]:
             col_mapping[col] = "Total líquido"
+        elif c_lower in ["setor econômico", "setor economico", "setor", "setor econômico"]:
+            col_mapping[col] = "Setor Econômico"
             
     if col_mapping:
         df_orders = df_orders.rename(columns=col_mapping)
@@ -287,7 +289,7 @@ def clean_and_normalize_orders(df_orders):
         raw_dates = df_orders["data envio"].copy()
         df_orders["data envio"] = pd.to_datetime(raw_dates, dayfirst=True, errors="coerce")
         
-    string_cols = ["Compra/Venda", "Tipo", "Moeda", "Papel"]
+    string_cols = ["Compra/Venda", "Tipo", "Moeda", "Papel", "Setor Econômico"]
     for col in string_cols:
         if col in df_orders.columns:
             df_orders[col] = df_orders[col].astype(str).str.strip()
@@ -369,7 +371,8 @@ def get_budget_data(use_mock=False):
                 "nome": "Nome", "valor": "Valor", "categoria": "Categoria",
                 "recebido_em": "Recebido em", "dias_ate": "Dias até",
                 "conta_debitada": "Conta debitada", "gasto_em": "Gasto em",
-                "tipo_cobranca": "Tipo de Cobrança", "ativo": "Ativo"
+                "tipo_cobranca": "Tipo de Cobrança", "ativo": "Ativo",
+                "fixo_variavel": "Fixo vs. Variável", "essencial_nao_essencial": "Essencial vs. Não Essencial"
             }
             df_receitas = df_receitas.rename(columns=map_rev).drop(columns=["id"], errors="ignore")
             df_despesas = df_despesas.rename(columns=map_rev).drop(columns=["id"], errors="ignore")
@@ -424,7 +427,7 @@ def get_orders_data(use_mock=False):
                 "preco_medio": "Preço médio", "total_liquido": "Total líquido",
                 "moeda": "Moeda", "tipo": "Tipo", "total": "Total",
                 "corretagem": "Corretagem", "preco_medio_corretagem": "Preço médio + corretagem",
-                "cod_cliente": "Cód. Cliente"
+                "cod_cliente": "Cód. Cliente", "setor_economico": "Setor Econômico"
             }
             df_orders = df_orders.rename(columns=map_rev).drop(columns=["id"], errors="ignore")
             if "data envio" in df_orders.columns:
@@ -501,6 +504,23 @@ def sync_google_sheets_to_sqlite():
                     df_despesas["Conta debitada"] = df_despesas["Conta debitada"].astype(str).str.strip()
                 if "Tipo de Cobrança" in df_despesas.columns:
                     df_despesas["Tipo de Cobrança"] = df_despesas["Tipo de Cobrança"].astype(str).str.strip()
+                
+                # Normaliza colunas Fixo/Variável e Essencial/Não Essencial de forma robusta e flexível
+                col_rename_despesas = {}
+                for col in df_despesas.columns:
+                    c_low = col.lower().strip()
+                    if "fixo" in c_low and "vari" in c_low:
+                        col_rename_despesas[col] = "Fixo vs. Variável"
+                    elif "essencial" in c_low:
+                        col_rename_despesas[col] = "Essencial vs. Não Essencial"
+                if col_rename_despesas:
+                    df_despesas = df_despesas.rename(columns=col_rename_despesas)
+                    
+                if "Fixo vs. Variável" in df_despesas.columns:
+                    df_despesas["Fixo vs. Variável"] = df_despesas["Fixo vs. Variável"].astype(str).str.strip()
+                if "Essencial vs. Não Essencial" in df_despesas.columns:
+                    df_despesas["Essencial vs. Não Essencial"] = df_despesas["Essencial vs. Não Essencial"].astype(str).str.strip()
+                    
                 df_despesas["Valor"] = df_despesas["Valor"].apply(clean_currency)
                 df_despesas["Gasto em"] = pd.to_datetime(df_despesas["Gasto em"], format="%d/%m/%Y", errors="coerce")
                 df_despesas["Dias até"] = df_despesas["Dias até"].apply(clean_int)

@@ -248,7 +248,8 @@ def calculate_portfolio_holdings(df_orders):
                 "preco_medio": 0.0,
                 "total_investido": 0.0,
                 "tipo": row.get("Tipo", "Ações"),
-                "moeda": row.get("Moeda", "BRL")
+                "moeda": row.get("Moeda", "BRL"),
+                "setor_economico": row.get("Setor Econômico", "Outros")
             }
             
         h = holdings[ticker]

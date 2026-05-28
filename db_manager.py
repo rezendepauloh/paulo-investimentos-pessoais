@@ -32,9 +32,15 @@ def init_db():
             total REAL,
             corretagem REAL,
             preco_medio_corretagem REAL,
-            cod_cliente TEXT
+            cod_cliente TEXT,
+            setor_economico TEXT
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE ordens ADD COLUMN setor_economico TEXT")
+    except sqlite3.OperationalError:
+        pass
+        
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ordens_delta ON ordens (data_envio, papel, compra_venda, qtd_executada, total_liquido)")
     
     # 2. Tabela de Receitas (Orçamento)
@@ -60,9 +66,20 @@ def init_db():
             conta_debitada TEXT,
             gasto_em TEXT,
             dias_ate INTEGER,
-            tipo_cobranca TEXT
+            tipo_cobranca TEXT,
+            fixo_variavel TEXT,
+            essencial_nao_essencial TEXT
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE despesas ADD COLUMN fixo_variavel TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE despesas ADD COLUMN essencial_nao_essencial TEXT")
+    except sqlite3.OperationalError:
+        pass
+        
     cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_despesas_delta ON despesas (nome, valor, gasto_em)")
     
     # 4. Tabela de Dividendos (Orçamento)
@@ -110,14 +127,14 @@ def init_db():
     conn.commit()
     conn.close()
     logger.info("Banco de dados SQLite inicializado com sucesso em %s", DB_PATH)
-
+ 
 def get_db_connection():
     """
     Retorna uma conexão ativa com o banco SQLite.
     """
     init_db()
     return sqlite3.connect(DB_PATH)
-
+ 
 def set_last_sync_time():
     """
     Salva o timestamp da última sincronização bem sucedida com o Google Sheets.
@@ -128,7 +145,7 @@ def set_last_sync_time():
     cursor.execute("INSERT OR REPLACE INTO sync_metadata (chave, valor) VALUES ('last_sync', ?)", (now_str,))
     conn.commit()
     conn.close()
-
+ 
 def get_last_sync_time():
     """
     Retorna o timestamp da última sincronização.
@@ -139,7 +156,7 @@ def get_last_sync_time():
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else "Nunca sincronizado"
-
+ 
 def save_dataframe_delta(table_name, df, unique_cols_mapping):
     """
     Salva dados de um DataFrame do Pandas na tabela local do SQLite utilizando lógica de Delta (incremental).
@@ -177,7 +194,10 @@ def save_dataframe_delta(table_name, df, unique_cols_mapping):
         "Conta debitada": "conta_debitada",
         "Gasto em": "gasto_em",
         "Tipo de Cobrança": "tipo_cobranca",
-        "Ativo": "ativo"
+        "Ativo": "ativo",
+        "Fixo vs. Variável": "fixo_variavel",
+        "Essencial vs. Não Essencial": "essencial_nao_essencial",
+        "Setor Econômico": "setor_economico"
     }
     
     df_temp = df_temp.rename(columns=cols_rename)

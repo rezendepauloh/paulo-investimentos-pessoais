@@ -245,18 +245,53 @@ with tab1:
         total_profit = total_market_val - total_invested
         total_return_pct = (total_profit / total_invested) * 100.0 if total_invested > 0 else 0.0
         
-        # Fluxo de caixa recente (apenas realizados)
+        # Identifica o mês de análise (o mês mais recente com lançamentos ocorridos ou o mês atual)
+        target_year = pd.Timestamp.now().year
+        target_month = pd.Timestamp.now().month
+        
+        all_dates = []
+        if not df_receitas_realized.empty and "Recebido em" in df_receitas_realized.columns:
+            all_dates.extend(df_receitas_realized["Recebido em"].dropna().tolist())
+        if not df_despesas_realized.empty and "Gasto em" in df_despesas_realized.columns:
+            all_dates.extend(df_despesas_realized["Gasto em"].dropna().tolist())
+            
+        if all_dates:
+            latest_date = pd.to_datetime(all_dates).max()
+            target_year = latest_date.year
+            target_month = latest_date.month
+            
+        df_rec_curr_month = df_receitas_realized[
+            (pd.to_datetime(df_receitas_realized["Recebido em"]).dt.year == target_year) & 
+            (pd.to_datetime(df_receitas_realized["Recebido em"]).dt.month == target_month)
+        ] if not df_receitas_realized.empty else pd.DataFrame()
+        
+        df_desp_curr_month = df_despesas_realized[
+            (pd.to_datetime(df_despesas_realized["Gasto em"]).dt.year == target_year) & 
+            (pd.to_datetime(df_despesas_realized["Gasto em"]).dt.month == target_month)
+        ] if not df_despesas_realized.empty else pd.DataFrame()
+        
+        total_receitas_mes = df_rec_curr_month["Valor"].sum() if not df_rec_curr_month.empty else 0.0
+        total_despesas_mes = df_desp_curr_month["Valor"].sum() if not df_desp_curr_month.empty else 0.0
+        total_proventos = df_dividendos["Valor"].sum() if not df_dividendos.empty else 0.0
+        
+        saving_rate = total_receitas_mes - total_despesas_mes
+        saving_pct = (saving_rate / total_receitas_mes * 100.0) if total_receitas_mes > 0 else 0.0
+        
+        months_names = {
+            1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril", 5: "Maio", 6: "Junho",
+            7: "Julho", 8: "Agosto", 9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+        }
+        mes_card_label = f"Poupança ({months_names.get(target_month, '')}/{target_year})"
+        
+        # Fluxo de caixa recente (apenas realizados, para o gráfico de fluxo de caixa global)
         total_receitas = df_receitas_realized["Valor"].sum() if not df_receitas_realized.empty else 0.0
         total_despesas = df_despesas_realized["Valor"].sum() if not df_despesas_realized.empty else 0.0
-        total_proventos = df_dividendos["Valor"].sum() if not df_dividendos.empty else 0.0
-        saving_rate = total_receitas - total_despesas
-        saving_pct = (saving_rate / total_receitas * 100.0) if total_receitas > 0 else 0.0
         
         # Formata os valores para exibição no estilo PT-BR
         total_market_val_formatted = format_number(total_market_val, is_currency=True, currency="BRL")
         total_invested_formatted = format_number(total_invested, is_currency=True, currency="BRL")
         total_profit_formatted = format_number(abs(total_profit), is_currency=True, currency="BRL")
-        total_return_pct_formatted = format_number(total_return_pct, decimals=2)
+        total_return_pct_formatted = format_number(abs(total_return_pct), decimals=2)
         saving_rate_formatted = format_number(saving_rate, is_currency=True, currency="BRL")
         saving_pct_formatted = format_number(saving_pct, decimals=1)
         
@@ -293,17 +328,20 @@ with tab1:
             """, unsafe_allow_html=True)
             
         with col4:
+            saving_class = "metric-delta-positive" if saving_rate >= 0 else "metric-delta-negative"
+            saving_prefix = "+" if saving_rate >= 0 else ""
+            saving_text = "poupado" if saving_rate >= 0 else "de déficit"
             st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-label">Taxa de Poupança (Mês)</div>
+                <div class="metric-label">{mes_card_label}</div>
                 <div class="metric-value">{saving_rate_formatted}</div>
-                <div class="metric-delta-positive">{saving_pct_formatted}% da receita poupado</div>
+                <div class="{saving_class}">{saving_prefix}{saving_pct_formatted}% da receita {saving_text}</div>
             </div>
             """, unsafe_allow_html=True)
 
         # Gráficos da Distribuição da Carteira
         st.markdown("### 📊 Alocação de Recursos")
-        col_g1, col_g2 = st.columns(2)
+        col_g1, col_g2, col_g3 = st.columns(3)
         
         with col_g1:
             st.subheader("Distribuição por Classe de Ativos")
@@ -330,6 +368,34 @@ with tab1:
             st.plotly_chart(fig_pie_type, width='stretch')
             
         with col_g2:
+            st.subheader("Distribuição por Setor Econômico")
+            if "setor_economico" in df_holdings.columns:
+                df_holdings["setor_economico"] = df_holdings["setor_economico"].fillna("Outros").replace("", "Outros")
+                fig_pie_sector = px.pie(
+                    df_holdings,
+                    names="setor_economico",
+                    values="valor_atual",
+                    hole=0.45,
+                    color_discrete_sequence=px.colors.qualitative.Dark24
+                )
+                fig_pie_sector.update_traces(
+                    textposition='inside', 
+                    textinfo='percent+label',
+                    hovertemplate="<b>Setor:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                )
+                fig_pie_sector.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#ffffff",
+                    showlegend=False,
+                    margin=dict(t=10, b=10, l=10, r=10),
+                    separators=",."
+                )
+                st.plotly_chart(fig_pie_sector, width='stretch')
+            else:
+                st.info("Setor econômico não disponível nos dados.")
+            
+        with col_g3:
             st.subheader("Distribuição por Ativo Específico")
             fig_pie_asset = px.pie(
                 df_holdings,
@@ -481,6 +547,165 @@ with tab1:
                     st.info("Nenhuma despesa realizada até o momento.")
             else:
                 st.info("Nenhuma despesa lançada para categorização.")
+
+        # Novo bloco: Análise de Custo de Vida e Saúde Financeira
+        if not df_despesas.empty and not df_despesas_realized.empty:
+            has_fixo = "Fixo vs. Variável" in df_despesas_realized.columns
+            has_essencial = "Essencial vs. Não Essencial" in df_despesas_realized.columns
+            
+            if has_fixo or has_essencial:
+                st.markdown("### 🏷️ Custo de Vida e Saúde Financeira (Realizado)")
+                col_cf1, col_cf2 = st.columns(2)
+                
+                with col_cf1:
+                    st.subheader("Custo de Vida: Fixo vs. Variável")
+                    if has_fixo:
+                        df_despesas_realized["Fixo vs. Variável"] = df_despesas_realized["Fixo vs. Variável"].fillna("Não Definido").replace("", "Não Definido")
+                        df_fixo = df_despesas_realized.groupby("Fixo vs. Variável")["Valor"].sum().reset_index()
+                        
+                        # Destaca o custo fixo como custo de vida mínimo previsível
+                        custo_vida_minimo = df_despesas_realized[df_despesas_realized["Fixo vs. Variável"].str.upper() == "FIXO"]["Valor"].sum()
+                        custo_vida_minimo_fmt = format_number(custo_vida_minimo, is_currency=True, currency="BRL")
+                        
+                        fig_fixo = px.pie(
+                            df_fixo,
+                            names="Fixo vs. Variável",
+                            values="Valor",
+                            hole=0.45,
+                            color="Fixo vs. Variável",
+                            color_discrete_map={"Fixo": "#FF5252", "Variável": "#FFC107", "Não Definido": "#88888b"}
+                        )
+                        fig_fixo.update_traces(
+                            textposition='inside', 
+                            textinfo='percent+label',
+                            hovertemplate="<b>Tipo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<extra></extra>"
+                        )
+                        fig_fixo.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="#ffffff",
+                            showlegend=False,
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            separators=",."
+                        )
+                        st.plotly_chart(fig_fixo, width='stretch')
+                        st.markdown(f"**Custo de Vida Mínimo Previsível (Fixo):** `{custo_vida_minimo_fmt}`")
+                    else:
+                        st.info("Coluna 'Fixo vs. Variável' não preenchida.")
+                        
+                with col_cf2:
+                    st.subheader("Saúde Financeira: Essencial vs. Não Essencial")
+                    if has_essencial:
+                        df_despesas_realized["Essencial vs. Não Essencial"] = df_despesas_realized["Essencial vs. Não Essencial"].fillna("Não Definido").replace("", "Não Definido")
+                        df_ess = df_despesas_realized.groupby("Essencial vs. Não Essencial")["Valor"].sum().reset_index()
+                        
+                        fig_ess = px.pie(
+                            df_ess,
+                            names="Essencial vs. Não Essencial",
+                            values="Valor",
+                            hole=0.45,
+                            color="Essencial vs. Não Essencial",
+                            color_discrete_map={"Essencial": "#2979FF", "Não essencial": "#E040FB", "Não Definido": "#88888b"}
+                        )
+                        fig_ess.update_traces(
+                            textposition='inside', 
+                            textinfo='percent+label',
+                            hovertemplate="<b>Tipo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<extra></extra>"
+                        )
+                        fig_ess.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="#ffffff",
+                            showlegend=False,
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            separators=",."
+                        )
+                        st.plotly_chart(fig_ess, width='stretch')
+                        
+                        # Explica a regra 50/30/20
+                        total_desp_real = df_despesas_realized["Valor"].sum()
+                        essencial_val = df_despesas_realized[df_despesas_realized["Essencial vs. Não Essencial"].str.upper() == "ESSENCIAL"]["Valor"].sum()
+                        pct_ess = (essencial_val / total_desp_real * 100.0) if total_desp_real > 0 else 0.0
+                        st.markdown(f"**Proporção de Gastos Essenciais:** `{pct_ess:.1f}%` (Ideal: ~50% pela regra 50/30/20)")
+                    else:
+                        st.info("Coluna 'Essencial vs. Não Essencial' não preenchida.")
+
+        # Novo bloco: Histórico Mensal de Receitas, Despesas e Dividendos (Sem filtros de creditado/debitado)
+        st.markdown("### 📊 Evolução Mensal de Receitas, Despesas e Dividendos")
+        
+        # Cria cópias dos dados para manipulação
+        df_rec_m = df_receitas.copy() if not df_receitas.empty else pd.DataFrame()
+        df_desp_m = df_despesas.copy() if not df_despesas.empty else pd.DataFrame()
+        df_div_m = df_dividendos.copy() if not df_dividendos.empty else pd.DataFrame()
+        
+        monthly_data = []
+        
+        # Processa receitas por mês
+        if not df_rec_m.empty and "Recebido em" in df_rec_m.columns:
+            df_rec_m["Mes"] = pd.to_datetime(df_rec_m["Recebido em"]).dt.strftime("%Y-%m")
+            df_grouped_rec = df_rec_m.groupby("Mes")["Valor"].sum().reset_index()
+            for _, r in df_grouped_rec.iterrows():
+                monthly_data.append({"Mês": r["Mes"], "Tipo": "Receitas", "Valor": r["Valor"]})
+                
+        # Processa despesas por mês
+        if not df_desp_m.empty and "Gasto em" in df_desp_m.columns:
+            df_desp_m["Mes"] = pd.to_datetime(df_desp_m["Gasto em"]).dt.strftime("%Y-%m")
+            df_grouped_desp = df_desp_m.groupby("Mes")["Valor"].sum().reset_index()
+            for _, r in df_grouped_desp.iterrows():
+                monthly_data.append({"Mês": r["Mes"], "Tipo": "Despesas", "Valor": r["Valor"]})
+                
+        # Processa dividendos por mês
+        if not df_div_m.empty and "Recebido em" in df_div_m.columns:
+            df_div_m["Mes"] = pd.to_datetime(df_div_m["Recebido em"]).dt.strftime("%Y-%m")
+            df_grouped_div = df_div_m.groupby("Mes")["Valor"].sum().reset_index()
+            for _, r in df_grouped_div.iterrows():
+                monthly_data.append({"Mês": r["Mes"], "Tipo": "Dividendos", "Valor": r["Valor"]})
+                
+        if monthly_data:
+            df_monthly = pd.DataFrame(monthly_data)
+            # Ordena de forma cronológica antes da formatação de strings
+            df_monthly = df_monthly.sort_values("Mês")
+            
+            # Mapeamento e formatação elegante para português (ex: "Jan/26")
+            months_pt = {
+                "01": "Jan", "02": "Fev", "03": "Mar", "04": "Abr", "05": "Mai", "06": "Jun",
+                "07": "Jul", "08": "Ago", "09": "Set", "10": "Out", "11": "Nov", "12": "Dez"
+            }
+            def format_month_pt(yr_mo_str):
+                try:
+                    yr, mo = yr_mo_str.split("-")
+                    return f"{months_pt.get(mo, mo)}/{yr[2:]}"
+                except Exception:
+                    return yr_mo_str
+                    
+            df_monthly["Mês Exibição"] = df_monthly["Mês"].apply(format_month_pt)
+            
+            # Gráfico de barras agrupado por mês
+            fig_monthly_bar = px.bar(
+                df_monthly,
+                x="Mês Exibição",
+                y="Valor",
+                color="Tipo",
+                barmode="group",
+                color_discrete_map={"Receitas": "#00E676", "Despesas": "#FF5252", "Dividendos": "#FFC107"}
+            )
+            fig_monthly_bar.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font_color="#ffffff",
+                xaxis_title="Mês",
+                yaxis_title="Valor (R$)",
+                legend_title="Tipo",
+                separators=",."
+            )
+            # Garante que o Plotly trate o eixo como categoria discreta e exiba 100% dos meses listados
+            fig_monthly_bar.update_xaxes(type='category')
+            fig_monthly_bar.update_traces(
+                hovertemplate="<b>Mês:</b> %{x}<br><b>Valor:</b> R$ %{y:,.2f}<extra></extra>"
+            )
+            st.plotly_chart(fig_monthly_bar, width='stretch')
+        else:
+            st.info("Sem dados de receitas, despesas ou dividendos para agrupar por mês.")
 
 # ================= TAB 2: HISTÓRICO E BENCHMARKS =================
 with tab2:
@@ -674,13 +899,29 @@ with tab3:
         if df_despesas.empty:
             st.info("Nenhuma despesa cadastrada.")
         else:
-            # Filtro por Categoria de Despesas
-            categorias_despesas = ["Todas"] + sorted(df_despesas["Categoria"].dropna().unique().tolist())
-            cat_despesa_sel = st.selectbox("Filtrar por Categoria (Despesas):", categorias_despesas, key="filter_des_cat")
+            # Filtros para Despesas
+            col_filter1, col_filter2, col_filter3 = st.columns(3)
+            with col_filter1:
+                categorias_despesas = ["Todas"] + sorted(df_despesas["Categoria"].dropna().unique().tolist())
+                cat_despesa_sel = st.selectbox("Filtrar por Categoria (Despesas):", categorias_despesas, key="filter_des_cat")
+            with col_filter2:
+                fixo_opcoes = ["Todos"]
+                if "Fixo vs. Variável" in df_despesas.columns:
+                    fixo_opcoes += sorted(df_despesas["Fixo vs. Variável"].dropna().unique().tolist())
+                fixo_sel = st.selectbox("Fixo vs. Variável:", fixo_opcoes, key="filter_des_fixo")
+            with col_filter3:
+                essencial_opcoes = ["Todos"]
+                if "Essencial vs. Não Essencial" in df_despesas.columns:
+                    essencial_opcoes += sorted(df_despesas["Essencial vs. Não Essencial"].dropna().unique().tolist())
+                essencial_sel = st.selectbox("Essencial vs. Não Essencial:", essencial_opcoes, key="filter_des_essencial")
             
             df_despesas_filtered = df_despesas.copy()
             if cat_despesa_sel != "Todas":
                 df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Categoria"] == cat_despesa_sel]
+            if "Fixo vs. Variável" in df_despesas_filtered.columns and fixo_sel != "Todos":
+                df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Fixo vs. Variável"] == fixo_sel]
+            if "Essencial vs. Não Essencial" in df_despesas_filtered.columns and essencial_sel != "Todos":
+                df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Essencial vs. Não Essencial"] == essencial_sel]
                 
             df_despesas_display = df_despesas_filtered.copy()
             
