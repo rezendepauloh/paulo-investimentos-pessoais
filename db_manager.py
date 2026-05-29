@@ -33,11 +33,21 @@ def init_db():
             corretagem REAL,
             preco_medio_corretagem REAL,
             cod_cliente TEXT,
-            setor_economico TEXT
+            setor_economico TEXT,
+            indexador TEXT,
+            taxa_indexador REAL
         )
     """)
     try:
         cursor.execute("ALTER TABLE ordens ADD COLUMN setor_economico TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE ordens ADD COLUMN indexador TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE ordens ADD COLUMN taxa_indexador REAL")
     except sqlite3.OperationalError:
         pass
         
@@ -193,6 +203,9 @@ def save_dataframe_delta(table_name, df, unique_cols_mapping):
         "Dias até": "dias_ate",
         "Conta debitada": "conta_debitada",
         "Gasto em": "gasto_em",
+        "Indexador": "indexador",
+        "Taxa Indexador": "taxa_indexador",
+        "Taxa Index": "taxa_indexador",
         "Tipo de Cobrança": "tipo_cobranca",
         "Ativo": "ativo",
         "Fixo vs. Variável": "fixo_variavel",

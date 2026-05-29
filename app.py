@@ -341,49 +341,57 @@ with tab1:
 
         # Gráficos da Distribuição da Carteira
         st.markdown("### 📊 Alocação de Recursos")
-        col_g1, col_g2, col_g3 = st.columns(3)
         
-        with col_g1:
-            st.subheader("Distribuição por Classe de Ativos")
-            fig_pie_type = px.pie(
-                df_holdings,
-                names="tipo",
+        exibicao_alocacao = st.radio(
+            "Visualização da Carteira:",
+            ["Hierárquica Integrada (Sunburst)", "Detalhada Lado a Lado (3 Gráficos)"],
+            horizontal=True,
+            index=0
+        )
+        
+        if exibicao_alocacao == "Hierárquica Integrada (Sunburst)":
+            st.subheader("Visão Hierárquica da Carteira (Classe > Setor > Ativo)")
+            df_sunburst = df_holdings.copy()
+            df_sunburst["setor_economico"] = df_sunburst["setor_economico"].fillna("Outros").replace("", "Outros")
+            df_sunburst["ticker"] = df_sunburst["ticker"].fillna("Outros").replace("", "Outros")
+            
+            fig_sunburst = px.sunburst(
+                df_sunburst,
+                path=["tipo", "setor_economico", "ticker"],
                 values="valor_atual",
-                hole=0.45,
                 color_discrete_sequence=px.colors.qualitative.G10
             )
-            fig_pie_type.update_traces(
-                textposition='inside', 
-                textinfo='percent+label',
-                hovertemplate="<b>Classe:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+            fig_sunburst.update_traces(
+                textinfo="label+percent parent",
+                hovertemplate="<b>%{label}</b><br>Valor: R$ %{value:,.2f}<br>Proporção (Pai): %{percentParent:.2%}<br>Proporção (Total): %{percentRoot:.2%}<extra></extra>"
             )
-            fig_pie_type.update_layout(
+            fig_sunburst.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font_color="#ffffff",
-                showlegend=False,
-                margin=dict(t=10, b=10, l=10, r=10),
+                margin=dict(t=20, b=20, l=20, r=20),
                 separators=",."
             )
-            st.plotly_chart(fig_pie_type, width='stretch')
+            st.plotly_chart(fig_sunburst, use_container_width=True)
             
-        with col_g2:
-            st.subheader("Distribuição por Setor Econômico")
-            if "setor_economico" in df_holdings.columns:
-                df_holdings["setor_economico"] = df_holdings["setor_economico"].fillna("Outros").replace("", "Outros")
-                fig_pie_sector = px.pie(
+        else:
+            col_g1, col_g2, col_g3 = st.columns(3)
+            
+            with col_g1:
+                st.subheader("Distribuição por Classe de Ativos")
+                fig_pie_type = px.pie(
                     df_holdings,
-                    names="setor_economico",
+                    names="tipo",
                     values="valor_atual",
                     hole=0.45,
-                    color_discrete_sequence=px.colors.qualitative.Dark24
+                    color_discrete_sequence=px.colors.qualitative.G10
                 )
-                fig_pie_sector.update_traces(
+                fig_pie_type.update_traces(
                     textposition='inside', 
                     textinfo='percent+label',
-                    hovertemplate="<b>Setor:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                    hovertemplate="<b>Classe:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
                 )
-                fig_pie_sector.update_layout(
+                fig_pie_type.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     font_color="#ffffff",
@@ -391,33 +399,59 @@ with tab1:
                     margin=dict(t=10, b=10, l=10, r=10),
                     separators=",."
                 )
-                st.plotly_chart(fig_pie_sector, width='stretch')
-            else:
-                st.info("Setor econômico não disponível nos dados.")
-            
-        with col_g3:
-            st.subheader("Distribuição por Ativo Específico")
-            fig_pie_asset = px.pie(
-                df_holdings,
-                names="ticker",
-                values="valor_atual",
-                hole=0.45,
-                color_discrete_sequence=px.colors.qualitative.Pastel
-            )
-            fig_pie_asset.update_traces(
-                textposition='inside', 
-                textinfo='percent+label',
-                hovertemplate="<b>Ativo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
-            )
-            fig_pie_asset.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#ffffff",
-                showlegend=False,
-                margin=dict(t=10, b=10, l=10, r=10),
-                separators=",."
-            )
-            st.plotly_chart(fig_pie_asset, width='stretch')
+                st.plotly_chart(fig_pie_type, width='stretch')
+                
+            with col_g2:
+                st.subheader("Distribuição por Setor Econômico")
+                if "setor_economico" in df_holdings.columns:
+                    df_holdings["setor_economico"] = df_holdings["setor_economico"].fillna("Outros").replace("", "Outros")
+                    fig_pie_sector = px.pie(
+                        df_holdings,
+                        names="setor_economico",
+                        values="valor_atual",
+                        hole=0.45,
+                        color_discrete_sequence=px.colors.qualitative.Dark24
+                    )
+                    fig_pie_sector.update_traces(
+                        textposition='inside', 
+                        textinfo='percent+label',
+                        hovertemplate="<b>Setor:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                    )
+                    fig_pie_sector.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ffffff",
+                        showlegend=False,
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        separators=",."
+                    )
+                    st.plotly_chart(fig_pie_sector, width='stretch')
+                else:
+                    st.info("Setor econômico não disponível nos dados.")
+                
+            with col_g3:
+                st.subheader("Distribuição por Ativo Específico")
+                fig_pie_asset = px.pie(
+                    df_holdings,
+                    names="ticker",
+                    values="valor_atual",
+                    hole=0.45,
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                fig_pie_asset.update_traces(
+                    textposition='inside', 
+                    textinfo='percent+label',
+                    hovertemplate="<b>Ativo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                )
+                fig_pie_asset.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#ffffff",
+                    showlegend=False,
+                    margin=dict(t=10, b=10, l=10, r=10),
+                    separators=",."
+                )
+                st.plotly_chart(fig_pie_asset, width='stretch')
 
         # Gráfico Orçamentário e Proventos
         st.markdown("### 💵 Fluxo de Caixa e Proventos Passivos")
@@ -483,70 +517,141 @@ with tab1:
                 st.info("Nenhum dividendo lançado recentemente.")
 
         # Gráficos de Categorias de Receitas e Despesas (Princípio da Competência Ocorrida)
-        st.markdown("### 🏷️ Categorias de Orçamento Realizadas (Receitas e Despesas)")
-        col_cat1, col_cat2 = st.columns(2)
+        st.markdown("### 🏷️ Distribuição de Receitas e Despesas Realizadas")
         
-        with col_cat1:
-            st.subheader("Receitas por Categoria (Realizadas)")
-            if not df_receitas.empty:
-                if not df_receitas_realized.empty:
-                    df_rec_cat = df_receitas_realized.groupby("Categoria")["Valor"].sum().reset_index()
-                    fig_rec_cat = px.pie(
-                        df_rec_cat,
-                        names="Categoria",
-                        values="Valor",
-                        hole=0.4,
-                        color_discrete_sequence=px.colors.qualitative.Prism
-                    )
-                    fig_rec_cat.update_traces(
-                        textposition='inside', 
-                        textinfo='percent+label',
-                        hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
-                    )
-                    fig_rec_cat.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="#ffffff",
-                        showlegend=False,
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        separators=",."
-                    )
-                    st.plotly_chart(fig_rec_cat, width='stretch')
-                else:
-                    st.info("Nenhuma receita realizada até o momento.")
-            else:
-                st.info("Nenhuma receita lançada para categorização.")
+        exibicao_receitas_despesas = st.radio(
+            "Visualização de Receitas e Despesas:",
+            ["Detalhada Lado a Lado (3 Gráficos)", "Hierárquica de Despesas (Sunburst)"],
+            horizontal=True,
+            index=0,
+            key="rec_desp_view"
+        )
+        
+        if exibicao_receitas_despesas == "Hierárquica de Despesas (Sunburst)":
+            st.subheader("Visão Hierárquica de Gastos (Conta Debitada > Categoria)")
+            if not df_despesas.empty and not df_despesas_realized.empty:
+                df_desp_sunburst = df_despesas_realized.copy()
+                df_desp_sunburst["Conta debitada"] = df_desp_sunburst["Conta debitada"].fillna("Não Informado").replace("", "Não Informado")
+                df_desp_sunburst["Categoria"] = df_desp_sunburst["Categoria"].fillna("Outros").replace("", "Outros")
                 
-        with col_cat2:
-            st.subheader("Despesas por Categoria (Realizadas)")
-            if not df_despesas.empty:
-                if not df_despesas_realized.empty:
-                    df_desp_cat = df_despesas_realized.groupby("Categoria")["Valor"].sum().reset_index()
-                    fig_desp_cat = px.pie(
-                        df_desp_cat,
-                        names="Categoria",
-                        values="Valor",
-                        hole=0.4,
-                        color_discrete_sequence=px.colors.qualitative.Set2
-                    )
-                    fig_desp_cat.update_traces(
-                        textposition='inside', 
-                        textinfo='percent+label',
-                        hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
-                    )
-                    fig_desp_cat.update_layout(
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="#ffffff",
-                        showlegend=False,
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        separators=",."
-                    )
-                    st.plotly_chart(fig_desp_cat, width='stretch')
-                else:
-                    st.info("Nenhuma despesa realizada até o momento.")
+                fig_desp_sun = px.sunburst(
+                    df_desp_sunburst,
+                    path=["Conta debitada", "Categoria"],
+                    values="Valor",
+                    color_discrete_sequence=px.colors.qualitative.Safe
+                )
+                fig_desp_sun.update_traces(
+                    textinfo="label+percent parent",
+                    hovertemplate="<b>%{label}</b><br>Valor: R$ %{value:,.2f}<br>Proporção (Pai): %{percentParent:.2%}<br>Proporção (Total): %{percentRoot:.2%}<extra></extra>"
+                )
+                fig_desp_sun.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#ffffff",
+                    margin=dict(t=20, b=20, l=20, r=20),
+                    separators=",."
+                )
+                st.plotly_chart(fig_desp_sun, use_container_width=True)
             else:
-                st.info("Nenhuma despesa lançada para categorização.")
+                st.info("Nenhuma despesa lançada para visualização hierárquica.")
+        else:
+            col_cat1, col_cat2, col_cat3 = st.columns(3)
+            
+            with col_cat1:
+                st.subheader("Receitas por Categoria (Realizadas)")
+                if not df_receitas.empty:
+                    if not df_receitas_realized.empty:
+                        df_rec_cat = df_receitas_realized.groupby("Categoria")["Valor"].sum().reset_index()
+                        fig_rec_cat = px.pie(
+                            df_rec_cat,
+                            names="Categoria",
+                            values="Valor",
+                            hole=0.4,
+                            color_discrete_sequence=px.colors.qualitative.Prism
+                        )
+                        fig_rec_cat.update_traces(
+                            textposition='inside', 
+                            textinfo='percent+label',
+                            hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                        )
+                        fig_rec_cat.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="#ffffff",
+                            showlegend=False,
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            separators=",."
+                        )
+                        st.plotly_chart(fig_rec_cat, width='stretch')
+                    else:
+                        st.info("Nenhuma receita realizada até o momento.")
+                else:
+                    st.info("Nenhuma receita lançada para categorização.")
+                    
+            with col_cat2:
+                st.subheader("Despesas por Categoria (Realizadas)")
+                if not df_despesas.empty:
+                    if not df_despesas_realized.empty:
+                        df_desp_cat = df_despesas_realized.groupby("Categoria")["Valor"].sum().reset_index()
+                        fig_desp_cat = px.pie(
+                            df_desp_cat,
+                            names="Categoria",
+                            values="Valor",
+                            hole=0.4,
+                            color_discrete_sequence=px.colors.qualitative.Set2
+                        )
+                        fig_desp_cat.update_traces(
+                            textposition='inside', 
+                            textinfo='percent+label',
+                            hovertemplate="<b>Categoria:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                        )
+                        fig_desp_cat.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="#ffffff",
+                            showlegend=False,
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            separators=",."
+                        )
+                        st.plotly_chart(fig_desp_cat, width='stretch')
+                    else:
+                        st.info("Nenhuma despesa realizada até o momento.")
+                else:
+                    st.info("Nenhuma despesa lançada para categorização.")
+     
+            with col_cat3:
+                st.subheader("Despesas por Conta Debitada")
+                if not df_despesas.empty:
+                    if not df_despesas_realized.empty and "Conta debitada" in df_despesas_realized.columns:
+                        # Copia para não alterar o DataFrame original
+                        df_desp_acc_copy = df_despesas_realized.copy()
+                        df_desp_acc_copy["Conta debitada"] = df_desp_acc_copy["Conta debitada"].fillna("Não Informado").replace("", "Não Informado")
+                        df_desp_acc = df_desp_acc_copy.groupby("Conta debitada")["Valor"].sum().reset_index()
+                        fig_desp_acc = px.pie(
+                            df_desp_acc,
+                            names="Conta debitada",
+                            values="Valor",
+                            hole=0.4,
+                            color_discrete_sequence=px.colors.qualitative.Safe
+                        )
+                        fig_desp_acc.update_traces(
+                            textposition='inside', 
+                            textinfo='percent+label',
+                            hovertemplate="<b>Conta:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
+                        )
+                        fig_desp_acc.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="#ffffff",
+                            showlegend=False,
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            separators=",."
+                        )
+                        st.plotly_chart(fig_desp_acc, width='stretch')
+                    else:
+                        st.info("Nenhuma despesa com conta debitada realizada.")
+                else:
+                    st.info("Nenhuma despesa lançada para categorização por conta.")
 
         # Novo bloco: Análise de Custo de Vida e Saúde Financeira
         if not df_despesas.empty and not df_despesas_realized.empty:
@@ -555,80 +660,126 @@ with tab1:
             
             if has_fixo or has_essencial:
                 st.markdown("### 🏷️ Custo de Vida e Saúde Financeira (Realizado)")
-                col_cf1, col_cf2 = st.columns(2)
                 
-                with col_cf1:
-                    st.subheader("Custo de Vida: Fixo vs. Variável")
-                    if has_fixo:
-                        df_despesas_realized["Fixo vs. Variável"] = df_despesas_realized["Fixo vs. Variável"].fillna("Não Definido").replace("", "Não Definido")
-                        df_fixo = df_despesas_realized.groupby("Fixo vs. Variável")["Valor"].sum().reset_index()
-                        
-                        # Destaca o custo fixo como custo de vida mínimo previsível
-                        custo_vida_minimo = df_despesas_realized[df_despesas_realized["Fixo vs. Variável"].str.upper() == "FIXO"]["Valor"].sum()
-                        custo_vida_minimo_fmt = format_number(custo_vida_minimo, is_currency=True, currency="BRL")
-                        
-                        fig_fixo = px.pie(
-                            df_fixo,
-                            names="Fixo vs. Variável",
-                            values="Valor",
-                            hole=0.45,
-                            color="Fixo vs. Variável",
-                            color_discrete_map={"Fixo": "#FF5252", "Variável": "#FFC107", "Não Definido": "#88888b"}
-                        )
-                        fig_fixo.update_traces(
-                            textposition='inside', 
-                            textinfo='percent+label',
-                            hovertemplate="<b>Tipo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<extra></extra>"
-                        )
-                        fig_fixo.update_layout(
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(0,0,0,0)",
-                            font_color="#ffffff",
-                            showlegend=False,
-                            margin=dict(t=10, b=10, l=10, r=10),
-                            separators=",."
-                        )
-                        st.plotly_chart(fig_fixo, width='stretch')
-                        st.markdown(f"**Custo de Vida Mínimo Previsível (Fixo):** `{custo_vida_minimo_fmt}`")
-                    else:
-                        st.info("Coluna 'Fixo vs. Variável' não preenchida.")
-                        
-                with col_cf2:
-                    st.subheader("Saúde Financeira: Essencial vs. Não Essencial")
-                    if has_essencial:
-                        df_despesas_realized["Essencial vs. Não Essencial"] = df_despesas_realized["Essencial vs. Não Essencial"].fillna("Não Definido").replace("", "Não Definido")
-                        df_ess = df_despesas_realized.groupby("Essencial vs. Não Essencial")["Valor"].sum().reset_index()
-                        
-                        fig_ess = px.pie(
-                            df_ess,
-                            names="Essencial vs. Não Essencial",
-                            values="Valor",
-                            hole=0.45,
-                            color="Essencial vs. Não Essencial",
-                            color_discrete_map={"Essencial": "#2979FF", "Não essencial": "#E040FB", "Não Definido": "#88888b"}
-                        )
-                        fig_ess.update_traces(
-                            textposition='inside', 
-                            textinfo='percent+label',
-                            hovertemplate="<b>Tipo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<extra></extra>"
-                        )
-                        fig_ess.update_layout(
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            plot_bgcolor="rgba(0,0,0,0)",
-                            font_color="#ffffff",
-                            showlegend=False,
-                            margin=dict(t=10, b=10, l=10, r=10),
-                            separators=",."
-                        )
-                        st.plotly_chart(fig_ess, width='stretch')
-                        
-                        # Explica a regra 50/30/20
-                        total_desp_real = df_despesas_realized["Valor"].sum()
-                        essencial_val = df_despesas_realized[df_despesas_realized["Essencial vs. Não Essencial"].str.upper() == "ESSENCIAL"]["Valor"].sum()
-                        pct_ess = (essencial_val / total_desp_real * 100.0) if total_desp_real > 0 else 0.0
-                        st.markdown(f"**Proporção de Gastos Essenciais:** `{pct_ess:.1f}%` (Ideal: ~50% pela regra 50/30/20)")
-                    else:
-                        st.info("Coluna 'Essencial vs. Não Essencial' não preenchida.")
+                exibicao_custo_vida = st.radio(
+                    "Visualização do Custo de Vida:",
+                    ["Hierárquica Integrada (Sunburst)", "Detalhada Lado a Lado (2 Gráficos)"],
+                    horizontal=True,
+                    index=0,
+                    key="custo_vida_view"
+                )
+                
+                if exibicao_custo_vida == "Hierárquica Integrada (Sunburst)":
+                    st.subheader("Visão Hierárquica de Despesas (Custo de Vida > Saúde > Categoria)")
+                    df_cv_sunburst = df_despesas_realized.copy()
+                    df_cv_sunburst["Fixo vs. Variável"] = df_cv_sunburst["Fixo vs. Variável"].fillna("Não Definido").replace("", "Não Definido")
+                    df_cv_sunburst["Essencial vs. Não Essencial"] = df_cv_sunburst["Essencial vs. Não Essencial"].fillna("Não Definido").replace("", "Não Definido")
+                    df_cv_sunburst["Categoria"] = df_cv_sunburst["Categoria"].fillna("Outros").replace("", "Outros")
+                    
+                    fig_cv_sunburst = px.sunburst(
+                        df_cv_sunburst,
+                        path=["Fixo vs. Variável", "Essencial vs. Não Essencial", "Categoria"],
+                        values="Valor",
+                        color="Fixo vs. Variável",
+                        color_discrete_map={"Fixo": "#FF5252", "Variável": "#FFC107", "Não Definido": "#88888b"}
+                    )
+                    fig_cv_sunburst.update_traces(
+                        textinfo="label+percent parent",
+                        hovertemplate="<b>%{label}</b><br>Valor: R$ %{value:,.2f}<br>Proporção (Pai): %{percentParent:.2%}<br>Proporção (Total): %{percentRoot:.2%}<extra></extra>"
+                    )
+                    fig_cv_sunburst.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ffffff",
+                        margin=dict(t=20, b=20, l=20, r=20),
+                        separators=",."
+                    )
+                    st.plotly_chart(fig_cv_sunburst, use_container_width=True)
+                    
+                    # Métricas resumidas abaixo do Sunburst
+                    custo_vida_minimo = df_despesas_realized[df_despesas_realized["Fixo vs. Variável"].str.upper() == "FIXO"]["Valor"].sum()
+                    custo_vida_minimo_fmt = format_number(custo_vida_minimo, is_currency=True, currency="BRL")
+                    
+                    total_desp_real = df_despesas_realized["Valor"].sum()
+                    essencial_val = df_despesas_realized[df_despesas_realized["Essencial vs. Não Essencial"].str.upper() == "ESSENCIAL"]["Valor"].sum()
+                    pct_ess = (essencial_val / total_desp_real * 100.0) if total_desp_real > 0 else 0.0
+                    
+                    st.markdown(f"**Custo de Vida Mínimo Previsível (Fixo):** `{custo_vida_minimo_fmt}` | **Proporção de Gastos Essenciais:** `{pct_ess:.1f}%` (Ideal: ~50% pela regra 50/30/20)")
+                else:
+                    col_cf1, col_cf2 = st.columns(2)
+                    
+                    with col_cf1:
+                        st.subheader("Custo de Vida: Fixo vs. Variável")
+                        if has_fixo:
+                            df_despesas_realized["Fixo vs. Variável"] = df_despesas_realized["Fixo vs. Variável"].fillna("Não Definido").replace("", "Não Definido")
+                            df_fixo = df_despesas_realized.groupby("Fixo vs. Variável")["Valor"].sum().reset_index()
+                            
+                            # Destaca o custo fixo como custo de vida mínimo previsível
+                            custo_vida_minimo = df_despesas_realized[df_despesas_realized["Fixo vs. Variável"].str.upper() == "FIXO"]["Valor"].sum()
+                            custo_vida_minimo_fmt = format_number(custo_vida_minimo, is_currency=True, currency="BRL")
+                            
+                            fig_fixo = px.pie(
+                                df_fixo,
+                                names="Fixo vs. Variável",
+                                values="Valor",
+                                hole=0.45,
+                                color="Fixo vs. Variável",
+                                color_discrete_map={"Fixo": "#FF5252", "Variável": "#FFC107", "Não Definido": "#88888b"}
+                            )
+                            fig_fixo.update_traces(
+                                textposition='inside', 
+                                textinfo='percent+label',
+                                hovertemplate="<b>Tipo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<extra></extra>"
+                            )
+                            fig_fixo.update_layout(
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                font_color="#ffffff",
+                                showlegend=False,
+                                margin=dict(t=10, b=10, l=10, r=10),
+                                separators=",."
+                            )
+                            st.plotly_chart(fig_fixo, width='stretch')
+                            st.markdown(f"**Custo de Vida Mínimo Previsível (Fixo):** `{custo_vida_minimo_fmt}`")
+                        else:
+                            st.info("Coluna 'Fixo vs. Variável' não preenchida.")
+                            
+                    with col_cf2:
+                        st.subheader("Saúde Financeira: Essencial vs. Não Essencial")
+                        if has_essencial:
+                            df_despesas_realized["Essencial vs. Não Essencial"] = df_despesas_realized["Essencial vs. Não Essencial"].fillna("Não Definido").replace("", "Não Definido")
+                            df_ess = df_despesas_realized.groupby("Essencial vs. Não Essencial")["Valor"].sum().reset_index()
+                            
+                            fig_ess = px.pie(
+                                df_ess,
+                                names="Essencial vs. Não Essencial",
+                                values="Valor",
+                                hole=0.45,
+                                color="Essencial vs. Não Essencial",
+                                color_discrete_map={"Essencial": "#2979FF", "Não essencial": "#E040FB", "Não Definido": "#88888b"}
+                            )
+                            fig_ess.update_traces(
+                                textposition='inside', 
+                                textinfo='percent+label',
+                                hovertemplate="<b>Tipo:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<extra></extra>"
+                            )
+                            fig_ess.update_layout(
+                                paper_bgcolor="rgba(0,0,0,0)",
+                                plot_bgcolor="rgba(0,0,0,0)",
+                                font_color="#ffffff",
+                                showlegend=False,
+                                margin=dict(t=10, b=10, l=10, r=10),
+                                separators=",."
+                            )
+                            st.plotly_chart(fig_ess, width='stretch')
+                            
+                            # Explica a regra 50/30/20
+                            total_desp_real = df_despesas_realized["Valor"].sum()
+                            essencial_val = df_despesas_realized[df_despesas_realized["Essencial vs. Não Essencial"].str.upper() == "ESSENCIAL"]["Valor"].sum()
+                            pct_ess = (essencial_val / total_desp_real * 100.0) if total_desp_real > 0 else 0.0
+                            st.markdown(f"**Proporção de Gastos Essenciais:** `{pct_ess:.1f}%` (Ideal: ~50% pela regra 50/30/20)")
+                        else:
+                            st.info("Coluna 'Essencial vs. Não Essencial' não preenchida.")
 
         # Novo bloco: Histórico Mensal de Receitas, Despesas e Dividendos (Sem filtros de creditado/debitado)
         st.markdown("### 📊 Evolução Mensal de Receitas, Despesas e Dividendos")
@@ -750,6 +901,7 @@ with tab2:
             "Retorno Carteira Acumulado (%) Ajustado": {"label": "Sua Carteira", "color": "#00E676", "width": 4},
             "CDI Acumulado (%) Ajustado": {"label": "CDI", "color": "#FFC107", "width": 2},
             "IPCA Acumulado (%) Ajustado": {"label": "IPCA (Inflação)", "color": "#FF5252", "width": 2},
+            "IPCA + 6% Acumulado (%) Ajustado": {"label": "IPCA + 6%", "color": "#E91E63", "width": 2},
             "Ibovespa Acumulado (%) Ajustado": {"label": "Ibovespa", "color": "#00E5FF", "width": 2},
             "S&P 500 Acumulado (%) Ajustado": {"label": "S&P 500", "color": "#E040FB", "width": 2}
         }

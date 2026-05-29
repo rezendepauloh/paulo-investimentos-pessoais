@@ -101,6 +101,27 @@ def clean_int(val):
             return int(float(val_str.replace(".", "")))
         except ValueError:
             return val
+ 
+def clean_percent_or_float(val):
+    """
+    Limpa e converte strings de percentuais ou decimais para float (ex: 105% -> 1.05, 5,85% -> 0.0585).
+    """
+    if pd.isna(val) or val == "":
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    val_str = str(val).strip()
+    is_pct = False
+    if "%" in val_str:
+        val_str = val_str.replace("%", "").strip()
+        is_pct = True
+    if "," in val_str:
+        val_str = val_str.replace(".", "").replace(",", ".")
+    try:
+        f = float(val_str)
+        return f / 100.0 if is_pct else f
+    except ValueError:
+        return 0.0
 
 @st.cache_resource
 def get_gspread_client():
@@ -231,6 +252,10 @@ def clean_and_normalize_orders(df_orders):
             col_mapping[col] = "Total líquido"
         elif c_lower in ["setor econômico", "setor economico", "setor", "setor econômico"]:
             col_mapping[col] = "Setor Econômico"
+        elif c_lower in ["indexador", "index", "tipo indexador"]:
+            col_mapping[col] = "Indexador"
+        elif c_lower in ["taxa indexador", "taxa index", "taxa", "taxaindexador", "taxaindex"]:
+            col_mapping[col] = "Taxa Indexador"
             
     if col_mapping:
         df_orders = df_orders.rename(columns=col_mapping)
@@ -289,12 +314,17 @@ def clean_and_normalize_orders(df_orders):
         raw_dates = df_orders["data envio"].copy()
         df_orders["data envio"] = pd.to_datetime(raw_dates, dayfirst=True, errors="coerce")
         
-    string_cols = ["Compra/Venda", "Tipo", "Moeda", "Papel", "Setor Econômico"]
+    string_cols = ["Compra/Venda", "Tipo", "Moeda", "Papel", "Setor Econômico", "Indexador"]
     for col in string_cols:
         if col in df_orders.columns:
             df_orders[col] = df_orders[col].astype(str).str.strip()
         else:
             df_orders[col] = ""
+            
+    if "Taxa Indexador" in df_orders.columns:
+        df_orders["Taxa Indexador"] = df_orders["Taxa Indexador"].apply(clean_percent_or_float)
+    else:
+        df_orders["Taxa Indexador"] = 0.0
             
     # Autocorreção in-app de segurança contra distorções de milhar/localidade em bonificações
     for idx, row in df_orders.iterrows():

@@ -56,7 +56,7 @@ def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
             
             return df["fator_acumulado"]
     except Exception as e:
-        st.warning(f"Não foi possível obter os dados do CDI da API do Banco Central: {e}")
+        st.toast(f"⚠️ Não foi possível obter os dados do CDI da API do Banco Central: {e}", icon="⚠️")
         
     # Fallback aproximado (11% ao ano constante de CDI caso a API falhe)
     dates = pd.date_range(start=start_date, end=end_date)
@@ -96,7 +96,7 @@ def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
             
             return df["fator_acumulado"]
     except Exception as e:
-        st.warning(f"Não foi possível obter os dados do IPCA da API do Banco Central: {e}")
+        st.toast(f"⚠️ Não foi possível obter os dados do IPCA da API do Banco Central: {e}", icon="⚠️")
         
     # Fallback aproximado (4.5% ao ano constante de IPCA caso a API falhe)
     dates = pd.date_range(start=start_date, end=end_date)
@@ -182,7 +182,7 @@ def get_current_prices(tickers, ticker_types=None):
             except Exception:
                 prices[orig_t] = None
     except Exception as e:
-        st.warning(f"Erro ao buscar cotações em tempo real no Yahoo Finance: {e}")
+        st.toast(f"⚠️ Erro ao buscar cotações em tempo real no Yahoo Finance: {e}", icon="⚠️")
         
     return prices
 
@@ -209,7 +209,7 @@ def get_usd_brl_rate():
                     val = val.iloc[0] if not val.empty else 5.0
                 return float(val)
     except Exception as e:
-        st.warning(f"Não foi possível obter a taxa de câmbio USD/BRL: {e}")
+        st.toast(f"⚠️ Não foi possível obter a taxa de câmbio USD/BRL: {e}", icon="⚠️")
     return 5.0  # Fallback razoável
 
 @st.cache_data(ttl=600)
@@ -668,6 +668,24 @@ def get_historical_performance(df_orders):
     bench_df["CDI"] = bench_df["CDI"] / bench_df["CDI"].iloc[0]
     bench_df["IPCA"] = bench_df["IPCA"] / bench_df["IPCA"].iloc[0]
     
+    # Calcula IPCA + 6% ao ano acumulado dia a dia
+    # 6% ao ano composto equivale a um rendimento diário de (1.06) ** (1/365)
+    fator_fixo_diario = (1.06) ** (1/365)
+    dias_passados = np.arange(len(bench_df))
+    bench_df["IPCA + 6%"] = bench_df["IPCA"] * (fator_fixo_diario ** dias_passados)
+    
+    # Salva IPCA + 6% no SQLite precos_historicos para auditoria e persistência local
+    try:
+        import db_manager
+        prices_list = []
+        for timestamp, price in bench_df["IPCA + 6%"].items():
+            date_str = timestamp.strftime("%Y-%m-%d")
+            prices_list.append(("IPCA_6", date_str, float(price)))
+        if prices_list:
+            db_manager.save_historical_prices(prices_list)
+    except Exception as ex:
+        logger.error(f"Erro ao salvar IPCA + 6% no SQLite: {ex}")
+    
     # Pré-carrega splits oficiais uma única vez antes do loop diário (Grande otimização!)
     splits_oficiais = {}
     splits_env = os.getenv("SPLITS_OFICIAIS", "{}")
@@ -710,18 +728,33 @@ def get_historical_performance(df_orders):
                 moeda = str(row.get("Moeda", "BRL")).strip().upper()
                 
                 if ticker not in holdings:
-                    holdings[ticker] = {"qty": 0.0, "invested": 0.0, "avg_cost": 0.0, "moeda": moeda}
+                    holdings[ticker] = {
+                        "qty": 0.0, 
+                        "invested": 0.0, 
+                        "avg_cost": 0.0, 
+                        "moeda": moeda,
+                        "tipo": row.get("Tipo", "Ações"),
+                        "indexador": row.get("Indexador", ""),
+                        "taxa_indexador": row.get("Taxa Indexador", 0.0),
+                        "current_balance": 0.0
+                    }
                     
                 h = holdings[ticker]
+                h["tipo"] = row.get("Tipo", "Ações")
+                h["indexador"] = row.get("Indexador", h.get("indexador", ""))
+                h["taxa_indexador"] = row.get("Taxa Indexador", h.get("taxa_indexador", 0.0))
+                
                 if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
                     new_qty = h["qty"] + qty
                     new_invested = h["invested"] + total_spent
                     h["avg_cost"] = new_invested / new_qty if new_qty > 0 else 0.0
                     h["qty"] = new_qty
                     h["invested"] = new_invested
+                    h["current_balance"] = h.get("current_balance", 0.0) + total_spent
                 elif "VENDA" in action or action == "V":
                     new_qty = max(0.0, h["qty"] - qty)
                     h["qty"] = new_qty
+                    h["current_balance"] = max(0.0, h.get("current_balance", 0.0) - total_spent)
                     h["invested"] = new_qty * h["avg_cost"]
                     
         if not has_any_orders:
@@ -729,6 +762,40 @@ def get_historical_performance(df_orders):
             invested_values.append(0.0)
             cota_values.append(1.0)
             continue
+            
+        # Variação diária do CDI (apenas dias úteis)
+        cdi_rate_today = 0.0
+        try:
+            idx = cdi_factor.index.get_loc(date)
+            if idx > 0:
+                cdi_rate_today = (cdi_factor.iloc[idx] / cdi_factor.iloc[idx - 1]) - 1.0
+        except Exception:
+            pass
+            
+        # Variação diária do CDI com suporte a finais de semana e feriados (EXCLUSIVO para a conta do 99 Pay)
+        cdi_rate_calendar_today = 0.0
+        try:
+            idx = cdi_factor.index.get_loc(date)
+            if idx > 0:
+                cdi_rate_calendar_today = (cdi_factor.iloc[idx] / cdi_factor.iloc[idx - 1]) - 1.0
+                if cdi_rate_calendar_today == 0.0:
+                    # Fallback para o último dia útil para simular rendimento corrido real no 99 Pay
+                    for i in range(idx - 1, max(0, idx - 5), -1):
+                        prev_rate = (cdi_factor.iloc[i] / cdi_factor.iloc[i - 1]) - 1.0
+                        if prev_rate > 0.0:
+                            cdi_rate_calendar_today = prev_rate
+                            break
+        except Exception:
+            pass
+            
+        # Variação diária do IPCA
+        ipca_rate_today = 0.0
+        try:
+            idx = ipca_factor.index.get_loc(date)
+            if idx > 0:
+                ipca_rate_today = (ipca_factor.iloc[idx] / ipca_factor.iloc[idx - 1]) - 1.0
+        except Exception:
+            pass
             
         # Calcula valor total e valor investido na data
         total_market_value = 0.0
@@ -746,6 +813,40 @@ def get_historical_performance(df_orders):
         
         for ticker, h in holdings.items():
             if h["qty"] <= 0:
+                continue
+                
+            tipo = str(h.get("tipo", "Ações")).upper()
+            indexer = str(h.get("indexador", "")).upper().strip()
+            taxa = float(h.get("taxa_indexador", 0.0))
+            is_cash_reserve = ("CAIXA" in tipo or "RENDA FIXA" in tipo) and indexer
+            
+            if is_cash_reserve:
+                # Simula a rentabilidade diária do caixa / renda fixa
+                daily_yield_rate = 0.0
+                
+                if "99 PAY" in ticker.upper():
+                    # Lógica 99 Pay (CDI corrido calendário): 110% do CDI até R$ 5.000,00 e 80% do CDI no que exceder
+                    balance = h.get("current_balance", h["invested"])
+                    if balance <= 5000.0:
+                        daily_yield_rate = cdi_rate_calendar_today * 1.10
+                    else:
+                        weight_5k = 5000.0 / balance
+                        weight_excess = (balance - 5000.0) / balance
+                        daily_yield_rate = cdi_rate_calendar_today * (1.10 * weight_5k + 0.80 * weight_excess)
+                elif "CDI" in indexer:
+                    # Contas e CDBs normais: rendem apenas em dias úteis
+                    daily_yield_rate = cdi_rate_today * taxa
+                elif "IPCA" in indexer:
+                    # Variação do IPCA + fração diária da taxa fixa pré
+                    daily_pre_rate = (1.0 + taxa) ** (1/365) - 1.0
+                    daily_yield_rate = ipca_rate_today + daily_pre_rate + (ipca_rate_today * daily_pre_rate)
+                elif "PRÉ" in indexer or "PRE" in indexer:
+                    daily_yield_rate = (1.0 + taxa) ** (1/365) - 1.0
+                    
+                h["current_balance"] = h.get("current_balance", h["invested"]) * (1.0 + daily_yield_rate)
+                
+                total_market_value += h["current_balance"]
+                total_invested_capital += h["invested"]
                 continue
                 
             # Calcula o multiplicador de split acumulado futuro para esta data
@@ -890,7 +991,7 @@ def get_historical_performance(df_orders):
     
     perf_df = perf_df.join(bench_df)
     
-    comparison_cols = ["Retorno Carteira", "CDI", "IPCA"]
+    comparison_cols = ["Retorno Carteira", "CDI", "IPCA", "IPCA + 6%"]
     if "Ibovespa" in bench_df.columns:
         comparison_cols.append("Ibovespa")
     if "S&P 500" in bench_df.columns:
