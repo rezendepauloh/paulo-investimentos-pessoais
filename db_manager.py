@@ -131,6 +131,19 @@ def init_db():
         )
     """)
     
+    # 8. Tabela de dados fundamentalistas de ativos
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS dados_fundamentalistas (
+            ticker TEXT,
+            demonstrativo TEXT,
+            periodo TEXT,
+            data TEXT,
+            conta TEXT,
+            valor REAL,
+            PRIMARY KEY (ticker, demonstrativo, periodo, data, conta)
+        )
+    """)
+    
     # Limpa cotações de placeholder corrompidas de 0.01 criadas anteriormente
     cursor.execute("DELETE FROM precos_historicos WHERE preco_fechamento = 0.01")
     
@@ -278,3 +291,83 @@ def save_historical_prices(prices_list):
     finally:
         conn.close()
     return max(0, rows_affected)
+
+def save_fundamental_data(ticker, demonstrativo, periodo, df):
+    """
+    Salva ou atualiza dados fundamentalistas para um ticker específico.
+    df: DataFrame com índice = Contas e colunas = Datas
+    """
+    if df is None or df.empty:
+        return 0
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    records = []
+    for conta in df.index:
+        for col_date in df.columns:
+            if hasattr(col_date, "strftime"):
+                date_str = col_date.strftime("%Y-%m-%d")
+            else:
+                date_str = str(col_date)[:10]
+                
+            val = df.loc[conta, col_date]
+            if pd.isna(val) or val is None:
+                continue
+            
+            try:
+                val_float = float(val)
+                records.append((ticker, demonstrativo, periodo, date_str, str(conta), val_float))
+            except (ValueError, TypeError):
+                continue
+                
+    if not records:
+        conn.close()
+        return 0
+        
+    sql = """
+        INSERT OR REPLACE INTO dados_fundamentalistas 
+        (ticker, demonstrativo, periodo, data, conta, valor) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    """
+    rows_affected = 0
+    try:
+        cursor.executemany(sql, records)
+        rows_affected = cursor.rowcount
+        conn.commit()
+    except Exception as e:
+        logger.error("Erro ao salvar dados fundamentalistas para %s: %s", ticker, e)
+        conn.rollback()
+    finally:
+        conn.close()
+        
+    return max(0, rows_affected)
+
+def get_fundamental_data(ticker, demonstrativo, periodo):
+    """
+    Busca dados fundamentalistas e retorna um DataFrame pivotado (Contas como índice, Datas como colunas decrescentes).
+    """
+    conn = get_db_connection()
+    sql = """
+        SELECT data, conta, valor 
+        FROM dados_fundamentalistas 
+        WHERE ticker = ? AND demonstrativo = ? AND periodo = ?
+        ORDER BY data DESC
+    """
+    try:
+        df = pd.read_sql_query(sql, conn, params=(ticker, demonstrativo, periodo))
+        if df.empty:
+            return pd.DataFrame()
+            
+        # Pivot para ter contas como linhas e datas como colunas
+        df_pivot = df.pivot(index="conta", columns="data", values="valor")
+        
+        # Ordena as colunas de data de forma decrescente
+        sorted_cols = sorted(df_pivot.columns, reverse=True)
+        df_pivot = df_pivot[sorted_cols]
+        
+        return df_pivot
+    except Exception as e:
+        logger.error("Erro ao buscar dados fundamentalistas para %s: %s", ticker, e)
+        return pd.DataFrame()
+    finally:
+        conn.close()

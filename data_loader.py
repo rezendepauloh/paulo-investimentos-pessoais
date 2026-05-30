@@ -588,3 +588,230 @@ def sync_google_sheets_to_sqlite():
             
     db_manager.set_last_sync_time()
     logger.info("Sincronização delta incremental concluída com sucesso.")
+
+# Dicionário de Tradução Contábil Inglês -> Português (PT-BR)
+TERMOS_CONTABEIS = {
+    # Income Statement (DRE)
+    "Total Revenue": "Receita Líquida",
+    "Operating Revenue": "Receita Operacional",
+    "Cost Of Revenue": "Custos dos Serviços/Produtos",
+    "Gross Profit": "Lucro Bruto",
+    "Operating Expense": "Despesas Operacionais",
+    "Research And Development": "Pesquisa e Desenvolvimento (P&D)",
+    "Selling General And Administrative": "Despesas de Vendas, Gerais e Admin (SG&A)",
+    "Selling General And Administration": "Despesas de Vendas, Gerais e Administrativas (SG&A)",
+    "Selling And Marketing Expense": "Despesas de Vendas e Marketing",
+    "General And Administrative Expense": "Despesas Gerais e Administrativas",
+    "Amortization": "Amortização",
+    "Depreciation And Amortization": "Depreciação e Amortização (D&A)",
+    "Operating Income": "Resultado Operacional (EBIT)",
+    "Net Non Operating Interest Income Expense": "Resultado Financeiro Líquido",
+    "Interest Income": "Receitas Financeiras",
+    "Interest Expense": "Despesas Financeiras",
+    "Normalized Income": "Lucro Líquido Normalizado",
+    "Pretax Income": "Lucro Antes de Impostos (LAIR)",
+    "Tax Provision": "Impostos e Provisões",
+    "Net Income": "Lucro Líquido",
+    "Net Income Common Stockholders": "Lucro Líquido aos Acionistas",
+    "EBITDA": "EBITDA",
+    "EBIT": "EBIT",
+    "Diluted Average Shares": "Média de Ações Diluídas",
+    "Diluted EPS": "LPA Diluído (Lucro por Ação)",
+    "Normalized EBITDA": "EBITDA Normalizado",
+    "Net Income Including Noncontrolling Interests": "Lucro Líquido Incluindo Não Controladores",
+    "Net Income From Continuing Operation Net Minority Interest": "Lucro Líquido de Operações Continuadas (Controladores)",
+    "Net Income From Continuing And Discontinued Operation": "Lucro Líquido de Operações Continuadas e Descontinuadas",
+    "Net Income Continuous Operations": "Lucro Líquido de Operações Continuadas",
+    "Basic EPS": "LPA Básico (Lucro por Ação)",
+    "Diluted NI Availto Com Stockholders": "Lucro Líquido Diluído Disponível aos Acionistas",
+    "Other Income Expense": "Outras Receitas/Despesas Operacionais",
+    "Reconciled Cost Of Revenue": "Custo da Receita Reconciliado",
+    "Other Non Operating Income Expenses": "Outras Receitas/Despesas Não Operacionais",
+    "Reconciled Depreciation": "Depreciação Reconciliada",
+    "Tax Effect Of Unusual Items": "Efeito Fiscal de Itens Extraordinários",
+    "Tax Rate For Calcs": "Alíquota de Imposto Efetiva",
+    "Total Expenses": "Despesas Totais",
+    "Basic Average Shares": "Média de Ações Básicas",
+    "Total Operating Income As Reported": "Resultado Operacional Reportado",
+    
+    # Balance Sheet (Balanço Patrimonial)
+    "Total Assets": "Ativo Total",
+    "Current Assets": "Ativo Circulante",
+    "Cash And Cash Equivalents": "Caixa e Equivalentes de Caixa",
+    "Cash Cash Equivalents And Short Term Investments": "Caixa, Equivalentes e Aplicações",
+    "Cash Equivalents": "Equivalentes de Caixa",
+    "Cash Financial": "Caixa Financeiro",
+    "Other Short Term Investments": "Aplicações Financeiras CP",
+    "Receivables": "Contas a Receber",
+    "Accounts Receivable": "Clientes / Contas a Receber",
+    "Other Receivables": "Outros Contas a Receber",
+    "Inventory": "Estoques",
+    "Raw Materials": "Matéria-Prima",
+    "Finished Goods": "Produtos Acabados",
+    "Prepaid Assets": "Despesas Antecipadas",
+    "Other Current Assets": "Outros Ativos Circulantes",
+    "Non Current Assets": "Ativo Não Circulante",
+    "Net PPE": "Imobilizado Líquido",
+    "Gross PPE": "Ativo Imobilizado Bruto",
+    "Accumulated Depreciation": "Depreciação Acumulada",
+    "Properties": "Propriedades e Equipamentos",
+    "Land And Improvements": "Terrenos e Benfeitorias",
+    "Machinery Furniture Equipment": "Máquinas, Móveis e Equipamentos",
+    "Leases": "Arrendamentos / Leasing",
+    "Goodwill And Other Intangible Assets": "Ágio e Intangíveis",
+    "Goodwill": "Ágio / Goodwill",
+    "Intangible Assets": "Ativos Intangíveis",
+    "Investments And Advances": "Investimentos e Adiantamentos",
+    "Investmentsin Associatesand Jointventures": "Investimentos em Coligadas/Joint Ventures",
+    "Investmentin Financial Assets": "Investimentos em Ativos Financeiros",
+    "Non Current Deferred Assets": "Ativo Diferido (LP)",
+    "Non Current Deferred Taxes Assets": "Ativos Fiscais Diferidos (LP)",
+    "Other Non Current Assets": "Outros Ativos Não Circulantes",
+    "Total Non Current Assets": "Ativo Não Circulante Total",
+    
+    "Total Liabilities Net Minority Interest": "Passivo Total + PL",
+    "Total Liabilities": "Passivo Total",
+    "Current Liabilities": "Passivo Circulante",
+    "Payables": "Contas a Pagar",
+    "Accounts Payable": "Fornecedores / Contas a Pagar",
+    "Payables And Accrued Expenses": "Contas a Pagar e Despesas Apropriadas",
+    "Tradeand Other Payables Non Current": "Outras Contas a Pagar LP",
+    "Short Term Debt": "Empréstimos e Financiamentos CP",
+    "Current Debt And Capital Lease Obligation": "Dívida de Curto Prazo",
+    "Current Debt": "Dívida de Curto Prazo (CP)",
+    "Commercial Paper": "Notas Comerciais",
+    "Other Current Borrowings": "Outras Obrigações Financeiras CP",
+    "Current Accrued Expenses": "Despesas Apropriadas a Pagar (CP)",
+    "Current Deferred Liabilities": "Passivo Diferido (CP)",
+    "Current Deferred Revenue": "Receita Diferida / Adiantamentos de Clientes",
+    "Income Tax Payable": "Imposto de Renda a Pagar",
+    "Total Tax Payable": "Total de Impostos a Pagar",
+    "Other Current Liabilities": "Outros Passivos Circulantes",
+    "Non Current Liabilities": "Passivo Não Circulante",
+    "Long Term Debt": "Empréstimos e Financiamentos LP",
+    "Long Term Debt And Capital Lease Obligation": "Dívida de Longo Prazo",
+    "Other Non Current Liabilities": "Outros Passivos Não Circulantes",
+    "Total Non Current Liabilities Net Minority Interest": "Passivo Não Circulante Total",
+    
+    "Stockholders Equity": "Patrimônio Líquido (PL)",
+    "Common Stock Equity": "Patrimônio Líquido Ordinário",
+    "Capital Stock": "Capital Social",
+    "Common Stock": "Ações Ordinárias (Capital)",
+    "Retained Earnings": "Lucros Acumulados",
+    "Treasury Stock": "Ações em Tesouraria",
+    "Other Equity Adjustments": "Outros Ajustes do Patrimônio Líquido",
+    "Other Equity Interest": "Outros Itens do PL",
+    "Gains Losses Not Affecting Retained Earnings": "Ajustes de Avaliação Patrimonial",
+    "Total Equity Gross Minority Interest": "Patrimônio Líquido Total + Participação de Não Controladores",
+    "Net Debt": "Dívida Líquida",
+    "Total Debt": "Dívida Bruta",
+    "Ordinary Shares Number": "Quantidade de Ações Ordinárias",
+    "Share Issued": "Ações Emitidas",
+    "Tangible Book Value": "Valor Patrimonial Tangível",
+    "Net Tangible Assets": "Ativos Tangíveis Líquidos",
+    "Invested Capital": "Capital Investido",
+    "Total Capitalization": "Capitalização Total",
+    "Working Capital": "Capital de Giro",
+    "Available For Sale Securities": "Títulos Disponíveis para Venda",
+    
+    # Cash Flow (Fluxo de Caixa)
+    "Operating Cash Flow": "Fluxo de Caixa Operacional (FCO)",
+    "Investing Cash Flow": "Fluxo de Caixa de Investimentos (FCI)",
+    "Capital Expenditure": "Investimento em Ativos (CapEx)",
+    "Financing Cash Flow": "Fluxo de Caixa de Financiamentos (FCF)",
+    "Net Income From Continuing Operations": "Lucro Líquido Operações Continuadas",
+    "Free Cash Flow": "Fluxo de Caixa Livre (FCL)",
+    "End Cash Position": "Saldo de Caixa Final",
+    "Beginning Cash Position": "Saldo de Caixa Inicial",
+    "Changes In Cash": "Variação Líquida de Caixa",
+    "Repurchase Of Capital Stock": "Recompra de Ações",
+    "Common Stock Dividend Paid": "Dividendos Pagos",
+    "Change In Inventory": "Variação de Estoques",
+    "Change In Other Current Assets": "Variação de Outros Ativos Circulantes",
+    "Cash Flow From Continuing Investing Activities": "FCO - Atividades de Investimento",
+    "Cash Flow From Continuing Operating Activities": "FCO - Atividades Operacionais",
+    "Change In Payable": "Variação de Fornecedores / Contas a Pagar",
+    "Cash Dividends Paid": "Dividendos em Dinheiro Pagos",
+    "Changes In Account Receivables": "Variação de Contas a Receber",
+    "Change In Working Capital": "Variação de Capital de Giro",
+    "Change In Receivables": "Variação de Contas a Receber",
+    "Change In Payables And Accrued Expense": "Variação de Contas a Pagar e Despesas Apropriadas",
+    "Change In Other Current Liabilities": "Variação de Outros Passivos Circulantes",
+    "Common Stock Payments": "Pagamento de Ações Ordinárias / Redução de Capital",
+    "Depreciation Amortization Depletion": "Depreciação, Amortização e Exaustão",
+    "Income Tax Paid Supplemental Data": "Imposto de Renda Pago (Dado Suplementar)",
+    "Issuance Of Debt": "Emissão de Dívida / Captação de Recursos",
+    "Long Term Debt Issuance": "Emissão de Dívida de Longo Prazo",
+    "Long Term Debt Payments": "Pagamento de Dívida de Longo Prazo",
+    "Net Common Stock Issuance": "Emissão Líquida de Ações",
+    "Change In Account Payable": "Variação de Fornecedores / Contas a Pagar",
+    "Cash Flow From Continuing Financing Activities": "FCO - Atividades de Financiamento",
+    "Net Issuance Payments Of Debt": "Captação/Amortização Líquida de Dívida",
+    "Net Investment Purchase And Sale": "Compra e Venda Líquida de Investimentos",
+    "Net Other Investing Changes": "Outras Variações Líquidas de Investimento",
+    "Net Long Term Debt Issuance": "Emissão/Amortização Líquida de Dívida LP",
+    "Net PPE Purchase And Sale": "Compra e Venda Líquida de Imobilizado (CapEx Líquido)",
+    "Net Short Term Debt Issuance": "Emissão/Amortização Líquida de Dívida CP",
+    "Other Non Cash Items": "Outros Ajustes Sem Efeito de Caixa",
+    "Net Other Financing Charges": "Outros Fluxos Líquidos de Financiamento",
+    "Purchase Of Investment": "Compra de Investimentos",
+    "Purchase Of PPE": "Aquisição de Imobilizado (CapEx)",
+    "Repayment Of Debt": "Amortização de Dívidas",
+    "Sale Of Investment": "Venda de Investimentos",
+    "Short Term Debt Payments": "Pagamento de Dívida de Curto Prazo",
+    "Stock Based Compensation": "Remuneração Baseada em Ações",
+}
+
+def sync_fundamental_data_from_yfinance(ticker_orig):
+    """
+    Busca os demonstrativos financeiros do yfinance e salva no SQLite local.
+    """
+    import yfinance as yf
+    import db_manager
+    from analytics import normalize_ticker, is_valid_yfinance_ticker
+    
+    ticker_norm = normalize_ticker(ticker_orig)
+    if not is_valid_yfinance_ticker(ticker_orig):
+        logger.warning(f"Ticker {ticker_orig} não é elegível para dados fundamentalistas.")
+        return False
+        
+    logger.info(f"Iniciando sincronização de dados fundamentalistas para {ticker_norm}...")
+    try:
+        ticker_obj = yf.Ticker(ticker_norm)
+        
+        # Demonstrativos Anuais
+        try:
+            db_manager.save_fundamental_data(ticker_orig, "balanco", "anual", ticker_obj.balance_sheet)
+        except Exception as e:
+            logger.error(f"Erro ao salvar balanco anual para {ticker_orig}: {e}")
+            
+        try:
+            db_manager.save_fundamental_data(ticker_orig, "dre", "anual", ticker_obj.income_stmt)
+        except Exception as e:
+            logger.error(f"Erro ao salvar dre anual para {ticker_orig}: {e}")
+            
+        try:
+            db_manager.save_fundamental_data(ticker_orig, "fluxo", "anual", ticker_obj.cashflow)
+        except Exception as e:
+            logger.error(f"Erro ao salvar fluxo anual para {ticker_orig}: {e}")
+            
+        # Demonstrativos Trimestrais
+        try:
+            db_manager.save_fundamental_data(ticker_orig, "balanco", "trimestral", ticker_obj.quarterly_balance_sheet)
+        except Exception as e:
+            logger.error(f"Erro ao salvar balanco trimestral para {ticker_orig}: {e}")
+            
+        try:
+            db_manager.save_fundamental_data(ticker_orig, "dre", "trimestral", ticker_obj.quarterly_income_stmt)
+        except Exception as e:
+            logger.error(f"Erro ao salvar dre trimestral para {ticker_orig}: {e}")
+            
+        try:
+            db_manager.save_fundamental_data(ticker_orig, "fluxo", "trimestral", ticker_obj.quarterly_cashflow)
+        except Exception as e:
+            logger.error(f"Erro ao salvar fluxo trimestral para {ticker_orig}: {e}")
+            
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao baixar dados fundamentalistas do yfinance para {ticker_orig}: {e}")
+        return False

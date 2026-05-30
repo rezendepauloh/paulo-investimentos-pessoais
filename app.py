@@ -10,7 +10,7 @@ load_dotenv()
 
 # Importações internas
 import db_manager
-from data_loader import get_budget_data, get_orders_data, sync_google_sheets_to_sqlite
+from data_loader import get_budget_data, get_orders_data, sync_google_sheets_to_sqlite, sync_fundamental_data_from_yfinance, TERMOS_CONTABEIS
 from analytics import calculate_portfolio_holdings, get_historical_performance
 from ai_allocator import generate_allocation_tips
 
@@ -137,7 +137,7 @@ with st.sidebar:
         last_sync = db_manager.get_last_sync_time()
         st.info(f"Última sincronização:\n**{last_sync}**")
         
-        if st.button("🔄 Sincronizar Google Sheets", use_container_width=True, help="Baixa lançamentos e ordens mais recentes do Sheets de forma incremental e atualiza o SQLite local."):
+        if st.button("🔄 Sincronizar Google Sheets", width='stretch', help="Baixa lançamentos e ordens mais recentes do Sheets de forma incremental e atualiza o SQLite local."):
             with st.spinner("Sincronizando dados incrementalmente..."):
                 try:
                     sync_google_sheets_to_sqlite()
@@ -205,10 +205,11 @@ if not df_orders.empty:
         df_perf = get_historical_performance(df_orders)
 
 # --- LAYOUT E NAVEGAÇÃO POR ABAS ---
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Visão Geral e Orçamento",
     "📈 Desempenho e Benchmarks",
     "📑 Extratos e Lançamentos",
+    "🔍 Análise Fundamentalista",
     "🤖 Consultoria de Alocação com IA"
 ])
 
@@ -372,7 +373,7 @@ with tab1:
                 margin=dict(t=20, b=20, l=20, r=20),
                 separators=",."
             )
-            st.plotly_chart(fig_sunburst, use_container_width=True)
+            st.plotly_chart(fig_sunburst, width='stretch')
             
         else:
             col_g1, col_g2, col_g3 = st.columns(3)
@@ -551,7 +552,7 @@ with tab1:
                     margin=dict(t=20, b=20, l=20, r=20),
                     separators=",."
                 )
-                st.plotly_chart(fig_desp_sun, use_container_width=True)
+                st.plotly_chart(fig_desp_sun, width='stretch')
             else:
                 st.info("Nenhuma despesa lançada para visualização hierárquica.")
         else:
@@ -694,7 +695,7 @@ with tab1:
                         margin=dict(t=20, b=20, l=20, r=20),
                         separators=",."
                     )
-                    st.plotly_chart(fig_cv_sunburst, use_container_width=True)
+                    st.plotly_chart(fig_cv_sunburst, width='stretch')
                     
                     # Métricas resumidas abaixo do Sunburst
                     custo_vida_minimo = df_despesas_realized[df_despesas_realized["Fixo vs. Variável"].str.upper() == "FIXO"]["Valor"].sum()
@@ -977,14 +978,23 @@ with tab3:
             width='stretch'
         )
         
-        # Soma totalizadora dinâmica
+        # Soma totalizadora dinâmica (Compra - Venda)
+        def calc_net_order_value(row):
+            action = str(row.get("Compra/Venda", "")).strip().upper()
+            val = float(row.get("Total líquido", 0))
+            if "VENDA" in action or action == "V":
+                return -val
+            return val
+            
+        net_values = df_orders_filtered.apply(calc_net_order_value, axis=1)
+        
         moedas_filtradas = df_orders_filtered["Moeda"].unique()
         if len(moedas_filtradas) == 1:
             moeda_display = moedas_filtradas[0]
-            total_soma_ordens = df_orders_filtered["Total líquido"].sum()
+            total_soma_ordens = net_values.sum()
         else:
             # Caso misto (exibe o consolidado total líquido em BRL)
-            total_soma_ordens = df_orders_filtered["Total líquido"].sum()
+            total_soma_ordens = net_values.sum()
             moeda_display = "BRL"
             
         total_soma_formatted = format_number(total_soma_ordens, is_currency=True, currency=moeda_display)
@@ -1159,8 +1169,226 @@ with tab3:
             </div>
             """, unsafe_allow_html=True)
 
-# ================= TAB 4: CONSULTORIA COM IA =================
+# ================= TAB 4: ANÁLISE FUNDAMENTALISTA =================
 with tab4:
+    st.subheader("🔍 Análise Fundamentalista Histórica")
+    st.markdown("Consulte os demonstrativos financeiros históricos (Balanço Patrimonial, DRE e Fluxo de Caixa) das empresas que você possui em carteira.")
+    
+    if df_holdings.empty:
+        st.info("Nenhum ativo em carteira para realizar a análise fundamentalista.")
+    else:
+        # Filtra apenas ativos elegíveis
+        from analytics import is_valid_yfinance_ticker
+        ativos_elegiveis = []
+        for ticker in sorted(df_holdings["ticker"].unique()):
+            tipo_ativo = df_holdings[df_holdings["ticker"] == ticker]["tipo"].iloc[0]
+            if is_valid_yfinance_ticker(ticker, tipo_ativo):
+                ativos_elegiveis.append(ticker)
+                
+        if not ativos_elegiveis:
+            st.info("Nenhum ativo elegível para análise fundamentalista em carteira.")
+        else:
+            col_f1, col_f2 = st.columns([1, 1])
+            with col_f1:
+                ativo_sel = st.selectbox("Escolha um Ativo da sua Carteira:", ativos_elegiveis)
+            with col_f2:
+                periodo_sel = st.radio("Período dos Demonstrativos:", ["Anual", "Trimestral"], horizontal=True)
+                
+            # Identifica tipo de ativo e moeda
+            tipo_ativo_sel = df_holdings[df_holdings["ticker"] == ativo_sel]["tipo"].iloc[0]
+            moeda_ativo_sel = df_holdings[df_holdings["ticker"] == ativo_sel]["moeda"].iloc[0]
+            is_fii = (tipo_ativo_sel == "FIIs" or "FII" in str(ativo_sel).upper())
+            
+            # Botão de Sincronização
+            col_btn_sync, col_status_sync = st.columns([1, 2])
+            with col_btn_sync:
+                if st.button("🔄 Atualizar Dados do Ativo", help="Busca os demonstrativos mais recentes do Yahoo Finance e atualiza o cache no SQLite."):
+                    with st.spinner("Atualizando dados..."):
+                        success = sync_fundamental_data_from_yfinance(ativo_sel)
+                        if success:
+                            st.success("✅ Dados atualizados com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Falha ao atualizar dados.")
+                            
+            st.markdown("---")
+            
+            if is_fii:
+                # Painel Customizado para FIIs
+                st.markdown(f"### 🏢 Análise de FII: **{ativo_sel}**")
+                st.info("FIIs (Fundos Imobiliários) não possuem demonstrativos contábeis convencionais (DRE e Balanço) públicos estruturados no padrão corporativo convencional. A análise de FIIs é voltada para a distribuição de proventos e indicadores patrimoniais.")
+                
+                # Exibe proventos recebidos pelo usuário desse FII
+                total_recebido = 0.0
+                if not df_dividendos.empty and "Ativo" in df_dividendos.columns:
+                    prov_fii = df_dividendos[df_dividendos["Ativo"] == ativo_sel]
+                    total_recebido = prov_fii["Valor"].sum() if not prov_fii.empty else 0.0
+                    
+                col_met1, col_met2 = st.columns(2)
+                with col_met1:
+                    st.metric("Total de Proventos Recebidos por Você", format_number(total_recebido, is_currency=True, currency="BRL"))
+                with col_met2:
+                    # Posição atual
+                    posicao_fii = df_holdings[df_holdings["ticker"] == ativo_sel]
+                    if not posicao_fii.empty:
+                        qtd_fii = posicao_fii["quantidade"].iloc[0]
+                        st.metric("Sua Quantidade Atual", format_number(qtd_fii, decimals=0))
+                    else:
+                        st.metric("Sua Quantidade Atual", "0")
+                
+                if not df_dividendos.empty and "Ativo" in df_dividendos.columns:
+                    prov_fii = df_dividendos[df_dividendos["Ativo"] == ativo_sel]
+                    if not prov_fii.empty:
+                        st.markdown("#### 🪙 Histórico de Proventos Recebidos na Planilha")
+                        prov_fii_display = prov_fii.sort_values("Recebido em", ascending=False).copy()
+                        prov_fii_display["Valor"] = prov_fii_display["Valor"].apply(lambda v: format_number(v, is_currency=True, currency="BRL"))
+                        st.dataframe(
+                            prov_fii_display[["Recebido em", "Valor"]].rename(columns={"Recebido em": "Data de Recebimento", "Valor": "Valor Pago"}),
+                            width='stretch'
+                        )
+            else:
+                # Ações e REITs - Demonstrativos Contábeis
+                demo_sel = st.radio(
+                    "Demonstrativo para Análise:",
+                    ["Balanço Patrimonial", "DRE (Demonstrativo do Resultado)", "Fluxo de Caixa"],
+                    horizontal=True
+                )
+                
+                demonstrativo_map = {
+                    "Balanço Patrimonial": "balanco",
+                    "DRE (Demonstrativo do Resultado)": "dre",
+                    "Fluxo de Caixa": "fluxo"
+                }
+                
+                demo_key = demonstrativo_map[demo_sel]
+                periodo_key = periodo_sel.lower()
+                
+                # Busca do banco local SQLite
+                df_fundamental = db_manager.get_fundamental_data(ativo_sel, demo_key, periodo_key)
+                
+                if df_fundamental.empty:
+                    st.warning("⚠️ Nenhum dado contábil local encontrado para este ativo. Clique em **Atualizar Dados do Ativo** acima para carregar as informações históricas do Yahoo Finance.")
+                else:
+                    # Aplica a tradução das contas contábeis
+                    df_translated = df_fundamental.copy()
+                    df_translated.index = [TERMOS_CONTABEIS.get(str(x), str(x)) for x in df_translated.index]
+                    
+                    # Remove duplicidades no índice traduzido, se houver
+                    df_translated = df_translated[~df_translated.index.duplicated(keep='first')]
+                    
+                    # Define a ordenação lógica contábil
+                    ORDEM_BALANCO = [
+                        "Ativo Total", "Ativo Circulante", "Caixa e Equivalentes de Caixa", "Caixa, Equivalentes e Aplicações",
+                        "Equivalentes de Caixa", "Caixa Financeiro", "Aplicações Financeiras CP", "Clientes / Contas a Receber",
+                        "Contas a Receber", "Outros Contas a Receber", "Estoques", "Matéria-Prima", "Produtos Acabados",
+                        "Despesas Antecipadas", "Outros Ativos Circulantes", "Ativo Não Circulante Total", "Ativo Não Circulante",
+                        "Imobilizado Líquido", "Ativo Imobilizado Bruto", "Depreciação Acumulada", "Propriedades e Equipamentos",
+                        "Terrenos e Benfeitorias", "Máquinas, Móveis e Equipamentos", "Arrendamentos / Leasing",
+                        "Ágio e Intangíveis", "Ágio / Goodwill", "Ativos Intangíveis", "Investimentos e Adiantamentos",
+                        "Investimentos em Coligadas/Joint Ventures", "Investimentos em Ativos Financeiros",
+                        "Ativo Diferido (LP)", "Ativos Fiscais Diferidos (LP)", "Outros Ativos Não Circulantes",
+                        "Passivo Total + PL", "Passivo Total", "Passivo Circulante", "Fornecedores / Contas a Pagar",
+                        "Contas a Pagar e Despesas Apropriadas", "Outras Contas a Pagar LP", "Dívida de Curto Prazo (CP)",
+                        "Empréstimos e Financiamentos CP", "Dívida de Curto Prazo", "Notas Comerciais",
+                        "Outras Obrigações Financeiras CP", "Despesas Apropriadas a Pagar (CP)", "Passivo Diferido (CP)",
+                        "Receita Diferida / Adiantamentos de Clientes", "Imposto de Renda a Pagar", "Total de Impostos a Pagar",
+                        "Outros Passivos Circulantes", "Passivo Não Circulante", "Dívida de Longo Prazo",
+                        "Empréstimos e Financiamentos LP", "Outros Passivos Não Circulantes", "Patrimônio Líquido (PL)",
+                        "Patrimônio Líquido Ordinário", "Capital Social", "Ações Ordinárias (Capital)", "Lucros Acumulados",
+                        "Ações em Tesouraria", "Outros Ajustes do Patrimônio Líquido", "Outros Itens do PL",
+                        "Ajustes de Avaliação Patrimonial", "Patrimônio Líquido Total + Participação de Não Controladores"
+                    ]
+                    
+                    ORDEM_DRE = [
+                        "Receita Líquida", "Receita Operacional", "Custo da Receita Reconciliado", "Custos dos Serviços/Produtos", "Lucro Bruto",
+                        "Despesas Operacionais", "Despesas de Vendas, Gerais e Admin (SG&A)", "Despesas de Vendas, Gerais e Administrativas (SG&A)", "Despesas de Vendas e Marketing",
+                        "Despesas Gerais e Administrativas", "Pesquisa e Desenvolvimento (P&D)", "Depreciação e Amortização (D&A)",
+                        "Amortização", "Depreciação Reconciliada", "Resultado Operacional (EBIT)", "Resultado Operacional Reportado", "EBITDA", "EBITDA Normalizado", "EBIT", "Resultado Financeiro Líquido",
+                        "Receitas Financeiras", "Despesas Financeiras", "Outras Receitas/Despesas Operacionais", "Outras Receitas/Despesas Não Operacionais", "Lucro Antes de Impostos (LAIR)", "Efeito Fiscal de Itens Extraordinários", "Alíquota de Imposto Efetiva", "Impostos e Provisões",
+                        "Despesas Totais", "Lucro Líquido Incluindo Não Controladores", "Lucro Líquido", "Lucro Líquido aos Acionistas", "Lucro Líquido Diluído Disponível aos Acionistas", "Lucro Líquido Normalizado", "Lucro Líquido de Operações Continuadas (Controladores)", "Lucro Líquido de Operações Continuadas e Descontinuadas", "Lucro Líquido de Operações Continuadas",
+                        "LPA Básico (Lucro por Ação)", "LPA Diluído (Lucro por Ação)", "Média de Ações Básicas", "Média de Ações Diluídas"
+                    ]
+                    
+                    ORDEM_FLUXO = [
+                        "Lucro Líquido", "Depreciação, Amortização e Exaustão", "Remuneração Baseada em Ações", "Outros Ajustes Sem Efeito de Caixa", "Variação de Estoques",
+                        "Variação de Contas a Receber", "Variação de Fornecedores / Contas a Pagar", "Variação de Contas a Pagar e Despesas Apropriadas", "Variação de Outros Ativos Circulantes", "Variação de Outros Passivos Circulantes",
+                        "Variação de Capital de Giro", "Fluxo de Caixa Operacional (FCO)", "FCO - Atividades Operacionais", "Aquisição de Imobilizado (CapEx)", "Compra de Investimentos", "Venda de Investimentos",
+                        "Compra e Venda Líquida de Investimentos", "Compra e Venda Líquida de Imobilizado (CapEx Líquido)", "Outras Variações Líquidas de Investimento", "Fluxo de Caixa de Investimentos (FCI)", "FCO - Atividades de Investimento",
+                        "Emissão Líquida de Ações", "Pagamento de Ações Ordinárias / Redução de Capital", "Emissão de Dívida / Captação de Recursos", "Amortização de Dívidas", "Emissão de Dívida de Longo Prazo", "Pagamento de Dívida de Longo Prazo", "Pagamento de Dívida de Curto Prazo",
+                        "Emissão/Amortização Líquida de Dívida LP", "Emissão/Amortização Líquida de Dívida CP", "Captação/Amortização Líquida de Dívida", "Dividendos em Dinheiro Pagos", "Outros Fluxos Líquidos de Financiamento", "Fluxo de Caixa de Financiamentos (FCF)", "FCO - Atividades de Financiamento",
+                        "Imposto de Renda Pago (Dado Suplementar)", "Saldo de Caixa Inicial", "Variação Líquida de Caixa", "Saldo de Caixa Final"
+                    ]
+                    
+                    # Determina a lista de ordenação
+                    if demo_key == "balanco":
+                        ordem_lista = ORDEM_BALANCO
+                    elif demo_key == "dre":
+                        ordem_lista = ORDEM_DRE
+                    else:
+                        ordem_lista = ORDEM_FLUXO
+                        
+                    # Função para obter a ordem do item
+                    def get_sort_index(conta_traduzida):
+                        try:
+                            return ordem_lista.index(conta_traduzida)
+                        except ValueError:
+                            return 999
+                            
+                    # Ordena o DataFrame baseado na lógica contábil
+                    df_translated["sort_idx"] = [get_sort_index(idx) for idx in df_translated.index]
+                    df_translated = df_translated.sort_values("sort_idx").drop(columns=["sort_idx"])
+                    
+                    # Formata cada célula numericamente para moeda do ativo
+                    for col_date in df_translated.columns:
+                        df_translated[col_date] = df_translated[col_date].apply(
+                            lambda val: format_number(val, is_currency=True, currency=moeda_ativo_sel, decimals=0)
+                        )
+                        
+                    # Renomeia as colunas de data para visualização limpa (ex: "2025" ou "12/25")
+                    new_cols = []
+                    for col_date in df_translated.columns:
+                        try:
+                            yr, mo, dy = col_date.split("-")
+                            if periodo_key == "anual":
+                                new_cols.append(yr)
+                            else:
+                                new_cols.append(f"{mo}/{yr[2:]}")
+                        except Exception:
+                            new_cols.append(str(col_date))
+                    df_translated.columns = new_cols
+                    
+                    st.markdown(f"### 📑 {demo_sel} - {ativo_sel} ({periodo_sel})")
+                    
+                    if demo_key == "balanco":
+                        # Contas do Ativo para divisão das colunas
+                        contas_ativo = [
+                            "Ativo Total", "Ativo Circulante", "Caixa e Equivalentes de Caixa", "Caixa, Equivalentes e Aplicações",
+                            "Equivalentes de Caixa", "Caixa Financeiro", "Aplicações Financeiras CP", "Clientes / Contas a Receber",
+                            "Contas a Receber", "Outros Contas a Receber", "Estoques", "Matéria-Prima", "Produtos Acabados",
+                            "Despesas Antecipadas", "Outros Ativos Circulantes", "Ativo Não Circulante Total", "Ativo Não Circulante",
+                            "Imobilizado Líquido", "Ativo Imobilizado Bruto", "Depreciação Acumulada", "Propriedades e Equipamentos",
+                            "Terrenos e Benfeitorias", "Máquinas, Móveis e Equipamentos", "Arrendamentos / Leasing",
+                            "Ágio e Intangíveis", "Ágio / Goodwill", "Ativos Intangíveis", "Investimentos e Adiantamentos",
+                            "Investimentos em Coligadas/Joint Ventures", "Investimentos em Ativos Financeiros",
+                            "Ativo Diferido (LP)", "Ativos Fiscais Diferidos (LP)", "Outros Ativos Não Circulantes"
+                        ]
+                        
+                        df_ativos = df_translated[df_translated.index.isin(contas_ativo)]
+                        df_passivos_pl = df_translated[~df_translated.index.isin(contas_ativo)]
+                        
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.markdown("#### 🟢 Ativos (Liquidez Decrescente)")
+                            st.dataframe(df_ativos, width='stretch')
+                        with col_b:
+                            st.markdown("#### 🔴 Passivo & PL (Exigibilidade Decrescente)")
+                            st.dataframe(df_passivos_pl, width='stretch')
+                    else:
+                        # Exibe tabela única ordenada para DRE e Fluxo de Caixa
+                        st.dataframe(df_translated, width='stretch')
+
+# ================= TAB 5: CONSULTORIA COM IA =================
+with tab5:
     st.subheader("🤖 Consultoria Estratégica com Inteligência Artificial")
     st.markdown("""
     O assistente de inteligência artificial analisa em tempo real os ativos da sua carteira, o histórico de rentabilidade 
