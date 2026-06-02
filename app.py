@@ -54,6 +54,70 @@ st.markdown("""
         font-family: 'Outfit', sans-serif;
     }
     
+    /* Torna o cabeçalho padrão do Streamlit transparente para não cobrir as abas */
+    header[data-testid="stHeader"], [data-testid="stHeader"] {
+        background: transparent !important;
+    }
+
+    /* Reduz drasticamente o padding superior e traz o conteúdo mais para cima */
+    .block-container, div[data-testid="stMainBlockContainer"] {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1rem !important;
+        position: relative !important;
+    }
+    
+    /* Reposiciona apenas as abas de navegação (stRadio com key="navigation_tabs") no topo */
+    .st-key-navigation_tabs div[data-testid="stRadio"] {
+        position: absolute !important;
+        top: -35px !important;
+        left: 0px !important;
+        z-index: 999999 !important;
+        background-color: transparent !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: max-content !important;
+    }
+    
+    /* Alinha opções do radio de navegação em linha horizontal compacta */
+    .st-key-navigation_tabs div[data-testid="stRadio"] [role="radiogroup"] {
+        flex-direction: row !important;
+        gap: 8px !important;
+    }
+    
+    /* Oculta a bolinha padrão do radio de navegação */
+    .st-key-navigation_tabs div[data-testid="stRadio"] label > div:first-child {
+        display: none !important;
+    }
+    
+    /* Estiliza as abas de navegação de forma premium e elegante no cabeçalho */
+    .st-key-navigation_tabs div[data-testid="stRadio"] label {
+        background-color: #1e1f25 !important;
+        border: 1px solid #343541 !important;
+        padding: 6px 16px !important;
+        border-radius: 6px !important;
+        cursor: pointer !important;
+        transition: all 0.2s ease-in-out !important;
+        margin: 0 !important;
+        white-space: nowrap !important;
+        font-family: 'Outfit', sans-serif !important;
+        color: #ffffff !important;
+    }
+    
+    .st-key-navigation_tabs div[data-testid="stRadio"] label:hover {
+        border-color: #00E676 !important;
+        background-color: #2a2b36 !important;
+        color: #00E676 !important;
+    }
+    
+    /* Destaca a aba ativa de navegação com a cor verde tema do painel */
+    .st-key-navigation_tabs div[data-testid="stRadio"] label:has(input:checked) {
+        background-color: #00E676 !important;
+        color: #121214 !important;
+        border-color: #00E676 !important;
+        font-weight: bold !important;
+        box-shadow: 0 0 12px rgba(0, 230, 118, 0.4) !important;
+    }
+    
     /* Customização dos Cards de Métricas */
     .metric-card {
         background: var(--secondary-background-color);
@@ -100,6 +164,21 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# --- LAYOUT E NAVEGAÇÃO POR ABAS (Estilo dashboard.py com st.radio) ---
+selected_tab = st.radio(
+    "Navegação",
+    [
+        "📊 Visão Geral e Orçamento",
+        "📈 Desempenho e Benchmarks",
+        "📑 Extratos e Lançamentos",
+        "🔍 Análise Fundamentalista",
+        "🤖 Consultoria de Alocação com IA"
+    ],
+    horizontal=True,
+    label_visibility="collapsed",
+    key="navigation_tabs"
+)
 
 # Título principal e barra lateral
 st.title("📈 Gestão Patrimonial Inteligente")
@@ -204,17 +283,10 @@ if not df_orders.empty:
         df_holdings = calculate_portfolio_holdings(df_orders)
         df_perf = get_historical_performance(df_orders)
 
-# --- LAYOUT E NAVEGAÇÃO POR ABAS ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Visão Geral e Orçamento",
-    "📈 Desempenho e Benchmarks",
-    "📑 Extratos e Lançamentos",
-    "🔍 Análise Fundamentalista",
-    "🤖 Consultoria de Alocação com IA"
-])
+# --- CONTEÚDO DAS ABAS ---
 
 # ================= TAB 1: VISÃO GERAL =================
-with tab1:
+if selected_tab == "📊 Visão Geral e Orçamento":
     if df_holdings.empty:
         st.warning("Nenhuma ordem ativa na carteira de investimentos.")
     else:
@@ -860,7 +932,7 @@ with tab1:
             st.info("Sem dados de receitas, despesas ou dividendos para agrupar por mês.")
 
 # ================= TAB 2: HISTÓRICO E BENCHMARKS =================
-with tab2:
+elif selected_tab == "📈 Desempenho e Benchmarks":
     st.subheader("📈 Evolução da Rentabilidade Acumulada vs Benchmarks")
     st.markdown("Esta visualização reconstrói a valorização percentual da sua carteira dia a dia e a compara com o CDI, IPCA (Inflação), Ibovespa e S&P 500.")
     
@@ -946,78 +1018,27 @@ with tab2:
         st.table(pd.DataFrame(resumo_dados))
 
 # ================= TAB 3: EXTRATOS E LANÇAMENTOS =================
-with tab3:
+elif selected_tab == "📑 Extratos e Lançamentos":
     st.subheader("📑 Visualização dos Lançamentos e Histórico de Transações")
     
-    st.markdown("### 🪙 Histórico de Ordens de Compra e Venda")
-    if df_orders.empty:
-        st.info("Nenhuma ordem cadastrada.")
-    else:
-        # Filtro interativo de ativos
-        ativos_unicos = ["Todos"] + sorted(df_orders["Papel"].dropna().unique().tolist())
-        ativo_selecionado = st.selectbox("Filtrar por Ativo:", ativos_unicos)
-        
-        df_orders_filtered = df_orders.copy()
-        if ativo_selecionado != "Todos":
-            df_orders_filtered = df_orders_filtered[df_orders_filtered["Papel"] == ativo_selecionado]
-            
-        df_orders_display = df_orders_filtered.sort_values("data envio", ascending=False).copy()
-        # Formata colunas de valores e quantidades no padrão PT-BR
-        df_orders_display["Total líquido"] = df_orders_display.apply(lambda r: format_number(r["Total líquido"], is_currency=True, currency=r["Moeda"]), axis=1)
-        df_orders_display["Preço médio + corretagem"] = df_orders_display.apply(lambda r: format_number(r["Preço médio + corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
-        df_orders_display["Preço médio"] = df_orders_display.apply(lambda r: format_number(r["Preço médio"], is_currency=True, currency=r["Moeda"]), axis=1)
-        df_orders_display["Total"] = df_orders_display.apply(lambda r: format_number(r["Total"], is_currency=True, currency=r["Moeda"]), axis=1)
-        df_orders_display["Corretagem"] = df_orders_display.apply(lambda r: format_number(r["Corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
-        df_orders_display["Qtd Executada"] = df_orders_display["Qtd Executada"].apply(lambda v: format_number(v, decimals=4 if v % 1 != 0 else 0))
-        
-        st.dataframe(
-            df_orders_display,
-            column_config={
-                "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
-            },
-            width='stretch'
-        )
-        
-        # Soma totalizadora dinâmica (Compra - Venda)
-        def calc_net_order_value(row):
-            action = str(row.get("Compra/Venda", "")).strip().upper()
-            val = float(row.get("Total líquido", 0))
-            if "VENDA" in action or action == "V":
-                return -val
-            return val
-            
-        net_values = df_orders_filtered.apply(calc_net_order_value, axis=1)
-        
-        moedas_filtradas = df_orders_filtered["Moeda"].unique()
-        if len(moedas_filtradas) == 1:
-            moeda_display = moedas_filtradas[0]
-            total_soma_ordens = net_values.sum()
-        else:
-            # Caso misto (exibe o consolidado total líquido em BRL)
-            total_soma_ordens = net_values.sum()
-            moeda_display = "BRL"
-            
-        total_soma_formatted = format_number(total_soma_ordens, is_currency=True, currency=moeda_display)
-        st.markdown(f"""
-        <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total Líquido (Filtro Ativo)</span>
-            <span style="font-weight: 700; color: #2979FF; font-size: 20px;">{total_soma_formatted}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    st.markdown("---")
-    st.markdown("### 💰 Receitas, Despesas e Dividendos")
-    sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Receitas", "Despesas", "Dividendos"])
+    sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs(["Receitas", "Despesas", "Dividendos", "Ordens de Compra/Venda"])
     
     with sub_tab1:
         if df_receitas.empty:
             st.info("Nenhuma receita cadastrada.")
         else:
-            # Filtro por Categoria de Receitas
-            categorias_receitas = ["Todas"] + sorted(df_receitas["Categoria"].dropna().unique().tolist())
-            cat_receita_sel = st.selectbox("Filtrar por Categoria (Receitas):", categorias_receitas, key="filter_rec_cat")
+            # Filtros por Nome e Categoria de Receitas em colunas
+            col_r1, col_r2 = st.columns(2)
+            with col_r1:
+                nomes_receitas = ["Todos"] + sorted(df_receitas["Nome"].dropna().unique().tolist())
+                nome_receita_sel = st.selectbox("Filtrar por Descrição:", nomes_receitas, key="filter_rec_nome")
+            with col_r2:
+                categorias_receitas = ["Todas"] + sorted(df_receitas["Categoria"].dropna().unique().tolist())
+                cat_receita_sel = st.selectbox("Filtrar por Categoria (Receitas):", categorias_receitas, key="filter_rec_cat")
             
             df_receitas_filtered = df_receitas.copy()
+            if nome_receita_sel != "Todos":
+                df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Nome"] == nome_receita_sel]
             if cat_receita_sel != "Todas":
                 df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Categoria"] == cat_receita_sel]
                 
@@ -1125,13 +1146,20 @@ with tab3:
         if df_dividendos.empty:
             st.info("Nenhum dividendo passivo lançado.")
         else:
-            # Filtro por Ativo de Dividendos
-            ativos_dividendos = ["Todos"] + sorted(df_dividendos["Ativo"].dropna().unique().tolist())
-            ativo_div_sel = st.selectbox("Filtrar por Ativo (Dividendos):", ativos_dividendos, key="filter_div_ativo")
+            # Filtros por Ativo e Categoria de Dividendos em colunas
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                ativos_dividendos = ["Todos"] + sorted(df_dividendos["Ativo"].dropna().unique().tolist())
+                ativo_div_sel = st.selectbox("Filtrar por Ativo (Dividendos):", ativos_dividendos, key="filter_div_ativo")
+            with col_d2:
+                categorias_dividendos = ["Todas"] + sorted(df_dividendos["Categoria"].dropna().unique().tolist())
+                cat_div_sel = st.selectbox("Filtrar por Categoria (Dividendos):", categorias_dividendos, key="filter_div_cat")
             
             df_dividendos_filtered = df_dividendos.copy()
             if ativo_div_sel != "Todos":
                 df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Ativo"] == ativo_div_sel]
+            if cat_div_sel != "Todas":
+                df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Categoria"] == cat_div_sel]
                 
             df_dividendos_display = df_dividendos_filtered.copy()
             
@@ -1168,9 +1196,85 @@ with tab3:
                 <span style="font-weight: 700; color: #FFC107; font-size: 20px;">{total_div_formatted}</span>
             </div>
             """, unsafe_allow_html=True)
+            
+    with sub_tab4:
+        st.markdown("### 🪙 Histórico de Ordens de Compra e Venda")
+        if df_orders.empty:
+            st.info("Nenhuma ordem cadastrada.")
+        else:
+            # Filtros interativos para as Ordens
+            col_o1, col_o2, col_o3, col_o4 = st.columns(4)
+            with col_o1:
+                ativos_unicos = ["Todos"] + sorted(df_orders["Papel"].dropna().unique().tolist())
+                ativo_selecionado = st.selectbox("Filtrar por Ativo:", ativos_unicos, key="filter_orders_ativo")
+            with col_o2:
+                acoes_unicas = ["Todos"] + sorted(df_orders["Compra/Venda"].dropna().unique().tolist())
+                acao_selecionada = st.selectbox("Compra/Venda:", acoes_unicas, key="filter_orders_acao")
+            with col_o3:
+                tipos_unicos = ["Todos"] + sorted(df_orders["Tipo"].dropna().unique().tolist())
+                tipo_selecionado = st.selectbox("Tipo:", tipos_unicos, key="filter_orders_tipo")
+            with col_o4:
+                setores_unicos = ["Todos"]
+                if "Setor Econômico" in df_orders.columns:
+                    setores_unicos += sorted(df_orders["Setor Econômico"].dropna().unique().tolist())
+                setor_selecionado = st.selectbox("Setor Econômico:", setores_unicos, key="filter_orders_setor")
+            
+            df_orders_filtered = df_orders.copy()
+            if ativo_selecionado != "Todos":
+                df_orders_filtered = df_orders_filtered[df_orders_filtered["Papel"] == ativo_selecionado]
+            if acao_selecionada != "Todos":
+                df_orders_filtered = df_orders_filtered[df_orders_filtered["Compra/Venda"] == acao_selecionada]
+            if tipo_selecionado != "Todos":
+                df_orders_filtered = df_orders_filtered[df_orders_filtered["Tipo"] == tipo_selecionado]
+            if "Setor Econômico" in df_orders_filtered.columns and setor_selecionado != "Todos":
+                df_orders_filtered = df_orders_filtered[df_orders_filtered["Setor Econômico"] == setor_selecionado]
+                
+            df_orders_display = df_orders_filtered.sort_values("data envio", ascending=False).copy()
+            # Formata colunas de valores e quantidades no padrão PT-BR
+            df_orders_display["Total líquido"] = df_orders_display.apply(lambda r: format_number(r["Total líquido"], is_currency=True, currency=r["Moeda"]), axis=1)
+            df_orders_display["Preço médio + corretagem"] = df_orders_display.apply(lambda r: format_number(r["Preço médio + corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
+            df_orders_display["Preço médio"] = df_orders_display.apply(lambda r: format_number(r["Preço médio"], is_currency=True, currency=r["Moeda"]), axis=1)
+            df_orders_display["Total"] = df_orders_display.apply(lambda r: format_number(r["Total"], is_currency=True, currency=r["Moeda"]), axis=1)
+            df_orders_display["Corretagem"] = df_orders_display.apply(lambda r: format_number(r["Corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
+            df_orders_display["Qtd Executada"] = df_orders_display["Qtd Executada"].apply(lambda v: format_number(v, decimals=4 if v % 1 != 0 else 0))
+            
+            st.dataframe(
+                df_orders_display,
+                column_config={
+                    "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
+                },
+                width='stretch'
+            )
+            
+            # Soma totalizadora dinâmica (Compra - Venda)
+            def calc_net_order_value(row):
+                action = str(row.get("Compra/Venda", "")).strip().upper()
+                val = float(row.get("Total líquido", 0))
+                if "VENDA" in action or action == "V":
+                    return -val
+                return val
+                
+            net_values = df_orders_filtered.apply(calc_net_order_value, axis=1)
+            
+            moedas_filtradas = df_orders_filtered["Moeda"].unique()
+            if len(moedas_filtradas) == 1:
+                moeda_display = moedas_filtradas[0]
+                total_soma_ordens = net_values.sum()
+            else:
+                # Caso misto (exibe o consolidado total líquido em BRL)
+                total_soma_ordens = net_values.sum()
+                moeda_display = "BRL"
+                
+            total_soma_formatted = format_number(total_soma_ordens, is_currency=True, currency=moeda_display)
+            st.markdown(f"""
+            <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total Líquido (Filtro Ativo)</span>
+                <span style="font-weight: 700; color: #2979FF; font-size: 20px;">{total_soma_formatted}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
 # ================= TAB 4: ANÁLISE FUNDAMENTALISTA =================
-with tab4:
+elif selected_tab == "🔍 Análise Fundamentalista":
     st.subheader("🔍 Análise Fundamentalista Histórica")
     st.markdown("Consulte os demonstrativos financeiros históricos (Balanço Patrimonial, DRE e Fluxo de Caixa) das empresas que você possui em carteira.")
     
@@ -1388,7 +1492,7 @@ with tab4:
                         st.dataframe(df_translated, width='stretch')
 
 # ================= TAB 5: CONSULTORIA COM IA =================
-with tab5:
+elif selected_tab == "🤖 Consultoria de Alocação com IA":
     st.subheader("🤖 Consultoria Estratégica com Inteligência Artificial")
     st.markdown("""
     O assistente de inteligência artificial analisa em tempo real os ativos da sua carteira, o histórico de rentabilidade 

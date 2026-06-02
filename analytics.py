@@ -56,7 +56,7 @@ def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
             
             return df["fator_acumulado"]
     except Exception as e:
-        st.toast(f"⚠️ Não foi possível obter os dados do CDI da API do Banco Central: {e}", icon="⚠️")
+        logger.warning(f"Não foi possível obter os dados do CDI da API do Banco Central: {e}")
         
     # Fallback aproximado (11% ao ano constante de CDI caso a API falhe)
     dates = pd.date_range(start=start_date, end=end_date)
@@ -96,7 +96,7 @@ def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
             
             return df["fator_acumulado"]
     except Exception as e:
-        st.toast(f"⚠️ Não foi possível obter os dados do IPCA da API do Banco Central: {e}", icon="⚠️")
+        logger.warning(f"Não foi possível obter os dados do IPCA da API do Banco Central: {e}")
         
     # Fallback aproximado (4.5% ao ano constante de IPCA caso a API falhe)
     dates = pd.date_range(start=start_date, end=end_date)
@@ -182,7 +182,7 @@ def get_current_prices(tickers, ticker_types=None):
             except Exception:
                 prices[orig_t] = None
     except Exception as e:
-        st.toast(f"⚠️ Erro ao buscar cotações em tempo real no Yahoo Finance: {e}", icon="⚠️")
+        logger.warning(f"Erro ao buscar cotações em tempo real no Yahoo Finance: {e}")
         
     return prices
 
@@ -209,7 +209,7 @@ def get_usd_brl_rate():
                     val = val.iloc[0] if not val.empty else 5.0
                 return float(val)
     except Exception as e:
-        st.toast(f"⚠️ Não foi possível obter a taxa de câmbio USD/BRL: {e}", icon="⚠️")
+        logger.warning(f"Não foi possível obter a taxa de câmbio USD/BRL: {e}")
     return 5.0  # Fallback razoável
 
 @st.cache_data(ttl=600)
