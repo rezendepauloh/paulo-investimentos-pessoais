@@ -702,6 +702,7 @@ def get_historical_performance(df_orders):
     cota_values = []
     cota_atual = 1.0
     valor_ontem = 0.0
+    total_invested_net_running = 0.0
     
     # Agrupa ordens por data para acesso instantâneo em O(1)
     df_date_grouped = df.groupby(df["data envio"].dt.date)
@@ -968,11 +969,13 @@ def get_historical_performance(df_orders):
             if total_market_value > 0.0:
                 cota_atual = 1.0
                 
+        total_invested_net_running += fluxo_hoje
+
         cota_values.append(cota_atual)
         valor_ontem = total_market_value
 
         portfolio_values.append(total_market_value)
-        invested_values.append(total_invested_capital)
+        invested_values.append(total_invested_net_running)
         
     perf_df = pd.DataFrame(index=date_range)
     perf_df["Valor de Mercado"] = portfolio_values

@@ -11,7 +11,7 @@ load_dotenv()
 # Importações internas
 import db_manager
 from data_loader import get_budget_data, get_orders_data, sync_google_sheets_to_sqlite, sync_fundamental_data_from_yfinance, TERMOS_CONTABEIS
-from analytics import calculate_portfolio_holdings, get_historical_performance
+from analytics import calculate_portfolio_holdings, get_historical_performance, get_usd_brl_rate
 from ai_allocator import generate_allocation_tips
 
 def format_number(val, is_currency=False, currency="BRL", decimals=2):
@@ -314,7 +314,32 @@ if selected_tab == "📊 Visão Geral e Orçamento":
 
         # Métricas Globais
         total_market_val = df_holdings["valor_atual"].sum()
-        total_invested = df_holdings["total_investido"].sum()
+        
+        # Calcula o Capital Investido líquido (Aportes - Resgates/Vendas)
+        total_invested = 0.0
+        if not df_orders.empty:
+            usd_brl_rate = get_usd_brl_rate()
+            for _, row in df_orders.iterrows():
+                action = str(row.get("Compra/Venda", "")).strip().upper()
+                val = float(row.get("Total líquido", 0))
+                moeda = str(row.get("Moeda", "BRL")).strip().upper()
+                qty = float(row.get("Qtd Executada", 0))
+                
+                # Conversão para BRL se for USD
+                if moeda == "USD":
+                    is_planilha_em_brl = False
+                    if val >= 1000.0 or (qty > 0 and (val / qty) > 15.0):
+                        is_planilha_em_brl = True
+                    val_brl = val if is_planilha_em_brl else val * usd_brl_rate
+                else:
+                    val_brl = val
+                    
+                if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO"]):
+                    total_invested += val_brl
+                elif "VENDA" in action or action == "V":
+                    total_invested -= val_brl
+        else:
+            total_invested = df_holdings["total_investido"].sum() if not df_holdings.empty else 0.0
         total_profit = total_market_val - total_invested
         total_return_pct = (total_profit / total_invested) * 100.0 if total_invested > 0 else 0.0
         
@@ -1024,6 +1049,7 @@ elif selected_tab == "📑 Extratos e Lançamentos":
     sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs(["Receitas", "Despesas", "Dividendos", "Ordens de Compra/Venda"])
     
     with sub_tab1:
+        st.markdown("### 🪙 Receitas")
         if df_receitas.empty:
             st.info("Nenhuma receita cadastrada.")
         else:
@@ -1079,6 +1105,7 @@ elif selected_tab == "📑 Extratos e Lançamentos":
             """, unsafe_allow_html=True)
             
     with sub_tab2:
+        st.markdown("### 🪙 Despesas")
         if df_despesas.empty:
             st.info("Nenhuma despesa cadastrada.")
         else:
@@ -1143,6 +1170,7 @@ elif selected_tab == "📑 Extratos e Lançamentos":
             """, unsafe_allow_html=True)
             
     with sub_tab3:
+        st.markdown("### 🪙 Dividendos recebidos")
         if df_dividendos.empty:
             st.info("Nenhum dividendo passivo lançado.")
         else:
@@ -1506,7 +1534,7 @@ elif selected_tab == "🤖 Consultoria de Alocação com IA":
     
     if btn_analise:
         with st.spinner("A Inteligência Artificial está analisando seus números... Isso pode levar alguns segundos."):
-            relatorio = generate_allocation_tips(df_holdings, df_receitas, df_despesas, df_dividendos)
+            relatorio = generate_allocation_tips(df_holdings, df_receitas, df_despesas, df_dividendos, df_orders=df_orders)
             
             st.markdown("---")
             st.markdown("### 📋 Diagnóstico Personalizado do Gemini")

@@ -18,7 +18,7 @@ def initialize_gemini():
         st.error(f"Erro ao inicializar o Google Gemini: {e}")
         return False
 
-def generate_allocation_tips(df_holdings, df_receitas, df_despesas, df_dividendos):
+def generate_allocation_tips(df_holdings, df_receitas, df_despesas, df_dividendos, df_orders=None):
     """
     Cria uma análise automatizada e gera dicas personalizadas de alocação de carteira
     utilizando a inteligência artificial do Google Gemini.
@@ -40,7 +40,32 @@ def generate_allocation_tips(df_holdings, df_receitas, df_despesas, df_dividendo
     
     if not df_holdings.empty:
         total_market_val = df_holdings["valor_atual"].sum()
-        total_invested = df_holdings["total_investido"].sum()
+        
+        # Calcula o Capital Investido líquido (Aportes - Resgates/Vendas)
+        if df_orders is not None and not df_orders.empty:
+            from analytics import get_usd_brl_rate
+            usd_brl_rate = get_usd_brl_rate()
+            for _, row in df_orders.iterrows():
+                action = str(row.get("Compra/Venda", "")).strip().upper()
+                val = float(row.get("Total líquido", 0))
+                moeda = str(row.get("Moeda", "BRL")).strip().upper()
+                qty = float(row.get("Qtd Executada", 0))
+                
+                # Conversão para BRL se for USD
+                if moeda == "USD":
+                    is_planilha_em_brl = False
+                    if val >= 1000.0 or (qty > 0 and (val / qty) > 15.0):
+                        is_planilha_em_brl = True
+                    val_brl = val if is_planilha_em_brl else val * usd_brl_rate
+                else:
+                    val_brl = val
+                    
+                if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO"]):
+                    total_invested += val_brl
+                elif "VENDA" in action or action == "V":
+                    total_invested -= val_brl
+        else:
+            total_invested = df_holdings["total_investido"].sum()
         
         # Agrupa por tipo
         by_type = df_holdings.groupby("tipo")["valor_atual"].sum()
