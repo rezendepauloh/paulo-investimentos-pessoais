@@ -1053,20 +1053,30 @@ elif selected_tab == "📑 Extratos e Lançamentos":
         if df_receitas.empty:
             st.info("Nenhuma receita cadastrada.")
         else:
-            # Filtros por Nome e Categoria de Receitas em colunas
-            col_r1, col_r2 = st.columns(2)
+            # Filtros por Nome, Categoria e Mês/Ano de Receitas em colunas
+            col_r1, col_r2, col_r3 = st.columns(3)
             with col_r1:
                 nomes_receitas = ["Todos"] + sorted(df_receitas["Nome"].dropna().unique().tolist())
                 nome_receita_sel = st.selectbox("Filtrar por Descrição:", nomes_receitas, key="filter_rec_nome")
             with col_r2:
                 categorias_receitas = ["Todas"] + sorted(df_receitas["Categoria"].dropna().unique().tolist())
                 cat_receita_sel = st.selectbox("Filtrar por Categoria (Receitas):", categorias_receitas, key="filter_rec_cat")
+            with col_r3:
+                df_temp = df_receitas.copy()
+                df_temp["Recebido em_dt"] = pd.to_datetime(df_temp["Recebido em"], errors='coerce')
+                df_temp["Mes_Ano"] = df_temp["Recebido em_dt"].dt.strftime("%m/%Y")
+                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
+                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
+                meses_anos = ["Todos"] + unique_months_sorted
+                mes_ano_rec_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_rec_mes_ano")
             
             df_receitas_filtered = df_receitas.copy()
             if nome_receita_sel != "Todos":
                 df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Nome"] == nome_receita_sel]
             if cat_receita_sel != "Todas":
                 df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Categoria"] == cat_receita_sel]
+            if mes_ano_rec_sel != "Todos":
+                df_receitas_filtered = df_receitas_filtered[pd.to_datetime(df_receitas_filtered["Recebido em"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_rec_sel]
                 
             df_receitas_display = df_receitas_filtered.copy()
             
@@ -1085,11 +1095,11 @@ elif selected_tab == "📑 Extratos e Lançamentos":
                     return f"Faltam {diff} dias"
                     
             df_receitas_display["Dias até"] = df_receitas_display["Recebido em"].apply(calc_receitas_dias)
-            df_receitas_display["Valor"] = df_receitas_display["Valor"].apply(lambda v: format_number(v, is_currency=True, currency="BRL"))
             st.dataframe(
                 df_receitas_display,
                 column_config={
                     "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
+                    "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
                 },
                 width='stretch'
             )
@@ -1110,7 +1120,7 @@ elif selected_tab == "📑 Extratos e Lançamentos":
             st.info("Nenhuma despesa cadastrada.")
         else:
             # Filtros para Despesas
-            col_filter1, col_filter2, col_filter3 = st.columns(3)
+            col_filter1, col_filter2, col_filter3, col_filter4 = st.columns(4)
             with col_filter1:
                 categorias_despesas = ["Todas"] + sorted(df_despesas["Categoria"].dropna().unique().tolist())
                 cat_despesa_sel = st.selectbox("Filtrar por Categoria (Despesas):", categorias_despesas, key="filter_des_cat")
@@ -1124,6 +1134,14 @@ elif selected_tab == "📑 Extratos e Lançamentos":
                 if "Essencial vs. Não Essencial" in df_despesas.columns:
                     essencial_opcoes += sorted(df_despesas["Essencial vs. Não Essencial"].dropna().unique().tolist())
                 essencial_sel = st.selectbox("Essencial vs. Não Essencial:", essencial_opcoes, key="filter_des_essencial")
+            with col_filter4:
+                df_temp = df_despesas.copy()
+                df_temp["Gasto em_dt"] = pd.to_datetime(df_temp["Gasto em"], errors='coerce')
+                df_temp["Mes_Ano"] = df_temp["Gasto em_dt"].dt.strftime("%m/%Y")
+                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
+                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
+                meses_anos = ["Todos"] + unique_months_sorted
+                mes_ano_desp_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_des_mes_ano")
             
             df_despesas_filtered = df_despesas.copy()
             if cat_despesa_sel != "Todas":
@@ -1132,6 +1150,8 @@ elif selected_tab == "📑 Extratos e Lançamentos":
                 df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Fixo vs. Variável"] == fixo_sel]
             if "Essencial vs. Não Essencial" in df_despesas_filtered.columns and essencial_sel != "Todos":
                 df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Essencial vs. Não Essencial"] == essencial_sel]
+            if mes_ano_desp_sel != "Todos":
+                df_despesas_filtered = df_despesas_filtered[pd.to_datetime(df_despesas_filtered["Gasto em"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_desp_sel]
                 
             df_despesas_display = df_despesas_filtered.copy()
             
@@ -1150,11 +1170,11 @@ elif selected_tab == "📑 Extratos e Lançamentos":
                     return f"Faltam {diff} dias"
                     
             df_despesas_display["Dias até"] = df_despesas_display["Gasto em"].apply(calc_despesas_dias)
-            df_despesas_display["Valor"] = df_despesas_display["Valor"].apply(lambda v: format_number(v, is_currency=True, currency="BRL"))
             st.dataframe(
                 df_despesas_display,
                 column_config={
                     "Gasto em": st.column_config.DateColumn("Gasto Em", format="DD/MM/YYYY"),
+                    "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
                 },
                 width='stretch'
             )
@@ -1174,20 +1194,30 @@ elif selected_tab == "📑 Extratos e Lançamentos":
         if df_dividendos.empty:
             st.info("Nenhum dividendo passivo lançado.")
         else:
-            # Filtros por Ativo e Categoria de Dividendos em colunas
-            col_d1, col_d2 = st.columns(2)
+            # Filtros por Ativo, Categoria e Mês/Ano de Dividendos em colunas
+            col_d1, col_d2, col_d3 = st.columns(3)
             with col_d1:
                 ativos_dividendos = ["Todos"] + sorted(df_dividendos["Ativo"].dropna().unique().tolist())
                 ativo_div_sel = st.selectbox("Filtrar por Ativo (Dividendos):", ativos_dividendos, key="filter_div_ativo")
             with col_d2:
                 categorias_dividendos = ["Todas"] + sorted(df_dividendos["Categoria"].dropna().unique().tolist())
                 cat_div_sel = st.selectbox("Filtrar por Categoria (Dividendos):", categorias_dividendos, key="filter_div_cat")
+            with col_d3:
+                df_temp = df_dividendos.copy()
+                df_temp["Recebido em_dt"] = pd.to_datetime(df_temp["Recebido em"], errors='coerce')
+                df_temp["Mes_Ano"] = df_temp["Recebido em_dt"].dt.strftime("%m/%Y")
+                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
+                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
+                meses_anos = ["Todos"] + unique_months_sorted
+                mes_ano_div_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_div_mes_ano")
             
             df_dividendos_filtered = df_dividendos.copy()
             if ativo_div_sel != "Todos":
                 df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Ativo"] == ativo_div_sel]
             if cat_div_sel != "Todas":
                 df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Categoria"] == cat_div_sel]
+            if mes_ano_div_sel != "Todos":
+                df_dividendos_filtered = df_dividendos_filtered[pd.to_datetime(df_dividendos_filtered["Recebido em"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_div_sel]
                 
             df_dividendos_display = df_dividendos_filtered.copy()
             
@@ -1206,11 +1236,11 @@ elif selected_tab == "📑 Extratos e Lançamentos":
                     return f"Faltam {diff} dias"
                     
             df_dividendos_display["Dias até"] = df_dividendos_display["Recebido em"].apply(calc_dividendos_dias)
-            df_dividendos_display["Valor"] = df_dividendos_display["Valor"].apply(lambda v: format_number(v, is_currency=True, currency="BRL"))
             st.dataframe(
                 df_dividendos_display,
                 column_config={
                     "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
+                    "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
                 },
                 width='stretch'
             )
@@ -1231,7 +1261,7 @@ elif selected_tab == "📑 Extratos e Lançamentos":
             st.info("Nenhuma ordem cadastrada.")
         else:
             # Filtros interativos para as Ordens
-            col_o1, col_o2, col_o3, col_o4 = st.columns(4)
+            col_o1, col_o2, col_o3, col_o4, col_o5 = st.columns(5)
             with col_o1:
                 ativos_unicos = ["Todos"] + sorted(df_orders["Papel"].dropna().unique().tolist())
                 ativo_selecionado = st.selectbox("Filtrar por Ativo:", ativos_unicos, key="filter_orders_ativo")
@@ -1246,6 +1276,14 @@ elif selected_tab == "📑 Extratos e Lançamentos":
                 if "Setor Econômico" in df_orders.columns:
                     setores_unicos += sorted(df_orders["Setor Econômico"].dropna().unique().tolist())
                 setor_selecionado = st.selectbox("Setor Econômico:", setores_unicos, key="filter_orders_setor")
+            with col_o5:
+                df_temp = df_orders.copy()
+                df_temp["data envio_dt"] = pd.to_datetime(df_temp["data envio"], errors='coerce')
+                df_temp["Mes_Ano"] = df_temp["data envio_dt"].dt.strftime("%m/%Y")
+                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
+                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
+                meses_anos = ["Todos"] + unique_months_sorted
+                mes_ano_ord_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_orders_mes_ano")
             
             df_orders_filtered = df_orders.copy()
             if ativo_selecionado != "Todos":
@@ -1256,20 +1294,25 @@ elif selected_tab == "📑 Extratos e Lançamentos":
                 df_orders_filtered = df_orders_filtered[df_orders_filtered["Tipo"] == tipo_selecionado]
             if "Setor Econômico" in df_orders_filtered.columns and setor_selecionado != "Todos":
                 df_orders_filtered = df_orders_filtered[df_orders_filtered["Setor Econômico"] == setor_selecionado]
+            if mes_ano_ord_sel != "Todos":
+                df_orders_filtered = df_orders_filtered[pd.to_datetime(df_orders_filtered["data envio"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_ord_sel]
                 
             df_orders_display = df_orders_filtered.sort_values("data envio", ascending=False).copy()
-            # Formata colunas de valores e quantidades no padrão PT-BR
-            df_orders_display["Total líquido"] = df_orders_display.apply(lambda r: format_number(r["Total líquido"], is_currency=True, currency=r["Moeda"]), axis=1)
-            df_orders_display["Preço médio + corretagem"] = df_orders_display.apply(lambda r: format_number(r["Preço médio + corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
-            df_orders_display["Preço médio"] = df_orders_display.apply(lambda r: format_number(r["Preço médio"], is_currency=True, currency=r["Moeda"]), axis=1)
-            df_orders_display["Total"] = df_orders_display.apply(lambda r: format_number(r["Total"], is_currency=True, currency=r["Moeda"]), axis=1)
-            df_orders_display["Corretagem"] = df_orders_display.apply(lambda r: format_number(r["Corretagem"], is_currency=True, currency=r["Moeda"]), axis=1)
-            df_orders_display["Qtd Executada"] = df_orders_display["Qtd Executada"].apply(lambda v: format_number(v, decimals=4 if v % 1 != 0 else 0))
+            # Mantém valores como numéricos para permitir ordenação correta, formatando pelo st.column_config
+            moedas_filtradas = df_orders_filtered["Moeda"].unique()
+            prefixo_moeda = "R$" if (len(moedas_filtradas) == 1 and moedas_filtradas[0] == "BRL") else ("$" if (len(moedas_filtradas) == 1 and moedas_filtradas[0] == "USD") else "")
+            format_str = f"{prefixo_moeda} %.2f" if prefixo_moeda else "%.2f"
             
             st.dataframe(
                 df_orders_display,
                 column_config={
                     "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
+                    "Total líquido": st.column_config.NumberColumn("Total líquido", format=format_str),
+                    "Preço médio + corretagem": st.column_config.NumberColumn("Preço médio + corretagem", format=format_str),
+                    "Preço médio": st.column_config.NumberColumn("Preço médio", format=format_str),
+                    "Total": st.column_config.NumberColumn("Total", format=format_str),
+                    "Corretagem": st.column_config.NumberColumn("Corretagem", format=format_str),
+                    "Qtd Executada": st.column_config.NumberColumn("Qtd Executada", format="%.4f"),
                 },
                 width='stretch'
             )
