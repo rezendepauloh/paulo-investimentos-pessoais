@@ -236,25 +236,25 @@ def clean_and_normalize_orders(df_orders):
             col_mapping[col] = "Moeda"
         elif c_lower in ["papel", "ativo", "ticker", "código", "codigo"]:
             col_mapping[col] = "Papel"
-        elif c_lower in ["qtd executada", "quantidade", "qtd", "quantidade executada", "volume"]:
+        elif c_lower in ["qtd executada", "quantidade", "qtd", "quantidade executada", "volume", "qtd execu", "qtd exec"]:
             col_mapping[col] = "Qtd Executada"
-        elif c_lower in ["preço médio", "preco medio", "preço unitário", "preco unitario", "pm"]:
+        elif c_lower in ["preço médio", "preco medio", "preço unitário", "preco unitario", "pm", "preço médi", "preco medi", "preço med"]:
             col_mapping[col] = "Preço médio"
         elif c_lower in ["total", "valor total", "valor"]:
             col_mapping[col] = "Total"
         elif c_lower in ["cód. cliente", "cod. cliente", "cliente", "cod cliente", "código cliente"]:
             col_mapping[col] = "Cód. Cliente"
-        elif c_lower in ["corretagem", "taxas", "taxa", "custos"]:
+        elif c_lower in ["corretagem", "taxas", "taxa", "custos", "corretag"]:
             col_mapping[col] = "Corretagem"
-        elif c_lower in ["preço médio + corretagem", "preco medio + corretagem", "preço médio com corretagem", "pm+corretagem"]:
+        elif c_lower in ["preço médio + corretagem", "preco medio + corretagem", "preço médio com corretagem", "pm+corretagem", "preço médio + c", "preco medio + c"]:
             col_mapping[col] = "Preço médio + corretagem"
-        elif c_lower in ["total líquido", "total liquido", "valor líquido", "valor liquido"]:
+        elif c_lower in ["total líquido", "total liquido", "valor líquido", "valor liquido", "total liquid"]:
             col_mapping[col] = "Total líquido"
         elif c_lower in ["setor econômico", "setor economico", "setor", "setor econômico"]:
             col_mapping[col] = "Setor Econômico"
         elif c_lower in ["indexador", "index", "tipo indexador"]:
             col_mapping[col] = "Indexador"
-        elif c_lower in ["taxa indexador", "taxa index", "taxa", "taxaindexador", "taxaindex"]:
+        elif c_lower in ["taxa indexador", "taxa index", "taxa", "taxaindexador", "taxaindex", "taxa inde:", "taxa inde"]:
             col_mapping[col] = "Taxa Indexador"
             
     if col_mapping:
@@ -457,7 +457,8 @@ def get_orders_data(use_mock=False):
                 "preco_medio": "Preço médio", "total_liquido": "Total líquido",
                 "moeda": "Moeda", "tipo": "Tipo", "total": "Total",
                 "corretagem": "Corretagem", "preco_medio_corretagem": "Preço médio + corretagem",
-                "cod_cliente": "Cód. Cliente", "setor_economico": "Setor Econômico"
+                "cod_cliente": "Cód. Cliente", "setor_economico": "Setor Econômico",
+                "indexador": "Indexador", "taxa_indexador": "Taxa Indexador"
             }
             df_orders = df_orders.rename(columns=map_rev).drop(columns=["id"], errors="ignore")
             if "data envio" in df_orders.columns:

@@ -254,16 +254,28 @@ def calculate_portfolio_holdings(df_orders):
             
         h = holdings[ticker]
         
-        if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
-            new_qty = h["quantidade"] + qty
-            new_total = h["total_investido"] + total_spent
-            h["preco_medio"] = new_total / new_qty if new_qty > 0 else 0.0
-            h["quantidade"] = new_qty
-            h["total_investido"] = new_total
-        elif "VENDA" in action or action == "V":
-            new_qty = max(0.0, h["quantidade"] - qty)
-            h["quantidade"] = new_qty
-            h["total_investido"] = new_qty * h["preco_medio"]
+        is_rf = str(row.get("Tipo", "")).strip().upper() in ["RENDA FIXA", "CAIXA", "CASH", "CONTA"]
+        
+        if is_rf:
+            if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
+                h["total_investido"] += total_spent
+                h["quantidade"] = 1.0 if h["total_investido"] > 0 else 0.0
+                h["preco_medio"] = h["total_investido"]
+            elif "VENDA" in action or action == "V":
+                h["total_investido"] = max(0.0, h["total_investido"] - total_spent)
+                h["quantidade"] = 1.0 if h["total_investido"] > 0 else 0.0
+                h["preco_medio"] = h["total_investido"]
+        else:
+            if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
+                new_qty = h["quantidade"] + qty
+                new_total = h["total_investido"] + total_spent
+                h["preco_medio"] = new_total / new_qty if new_qty > 0 else 0.0
+                h["quantidade"] = new_qty
+                h["total_investido"] = new_total
+            elif "VENDA" in action or action == "V":
+                new_qty = max(0.0, h["quantidade"] - qty)
+                h["quantidade"] = new_qty
+                h["total_investido"] = new_qty * h["preco_medio"]
             
     # Filtra apenas ativos que ainda estão na carteira
     active_holdings = [h for h in holdings.values() if h["quantidade"] > 0]
@@ -745,18 +757,32 @@ def get_historical_performance(df_orders):
                 h["indexador"] = row.get("Indexador", h.get("indexador", ""))
                 h["taxa_indexador"] = row.get("Taxa Indexador", h.get("taxa_indexador", 0.0))
                 
-                if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
-                    new_qty = h["qty"] + qty
-                    new_invested = h["invested"] + total_spent
-                    h["avg_cost"] = new_invested / new_qty if new_qty > 0 else 0.0
-                    h["qty"] = new_qty
-                    h["invested"] = new_invested
-                    h["current_balance"] = h.get("current_balance", 0.0) + total_spent
-                elif "VENDA" in action or action == "V":
-                    new_qty = max(0.0, h["qty"] - qty)
-                    h["qty"] = new_qty
-                    h["current_balance"] = max(0.0, h.get("current_balance", 0.0) - total_spent)
-                    h["invested"] = new_qty * h["avg_cost"]
+                is_rf = str(row.get("Tipo", "")).strip().upper() in ["RENDA FIXA", "CAIXA", "CASH", "CONTA"]
+                
+                if is_rf:
+                    if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO"]):
+                        h["invested"] += total_spent
+                        h["qty"] = 1.0 if h["invested"] > 0 else 0.0
+                        h["avg_cost"] = h["invested"]
+                        h["current_balance"] = h.get("current_balance", 0.0) + total_spent
+                    elif "VENDA" in action or action == "V":
+                        h["invested"] = max(0.0, h["invested"] - total_spent)
+                        h["qty"] = 1.0 if h["invested"] > 0 else 0.0
+                        h["avg_cost"] = h["invested"]
+                        h["current_balance"] = max(0.0, h.get("current_balance", 0.0) - total_spent)
+                else:
+                    if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO", "DESDOBRAMENTO", "BONIFICACAO", "BONIFICAÇÃO"]):
+                        new_qty = h["qty"] + qty
+                        new_invested = h["invested"] + total_spent
+                        h["avg_cost"] = new_invested / new_qty if new_qty > 0 else 0.0
+                        h["qty"] = new_qty
+                        h["invested"] = new_invested
+                        h["current_balance"] = h.get("current_balance", 0.0) + total_spent
+                    elif "VENDA" in action or action == "V":
+                        new_qty = max(0.0, h["qty"] - qty)
+                        h["qty"] = new_qty
+                        h["current_balance"] = max(0.0, h.get("current_balance", 0.0) - total_spent)
+                        h["invested"] = new_qty * h["avg_cost"]
                     
         if not has_any_orders:
             portfolio_values.append(0.0)
