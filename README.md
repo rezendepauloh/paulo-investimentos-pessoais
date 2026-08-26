@@ -4,60 +4,100 @@ Este projeto é um painel financeiro profissional construído em Python com **St
 
 ---
 
-## 🚀 Como Executar o Projeto Localmente
+## 🚀 Como Executar o Projeto Localmente (Docker / WSL)
 
-Siga o passo a passo abaixo para rodar o projeto na sua máquina:
+Requisitos: **WSL (Ubuntu)** e **Docker Desktop** (com integração WSL ativada) ou Docker Engine.
 
-### 1. Clonar ou Acessar o Diretório do Projeto
+### 1. Clonar ou Acessar o Diretório do Projeto no WSL
 
-No seu terminal do Windows (PowerShell/CMD), acesse a pasta do projeto:
-
-```bash
-cd d:\PythonProjects\paulo-investimentos-pessoais
-```
-
-### 2. Criar e Ativar Ambiente Virtual (Recomendado)
-
-Para isolar as dependências e evitar conflitos no seu Python global, crie e ative um ambiente virtual (`venv`):
-
-```powershell
-# Cria o ambiente virtual na pasta .venv
-python -m venv .venv
-
-# Ativa o ambiente virtual (no PowerShell do Windows)
-.venv\Scripts\Activate.ps1
-
-# Ou se estiver usando o CMD tradicional do Windows:
-# .venv\Scripts\activate.bat
-```
-
-### 3. Instalar as Dependências
-
-Com o ambiente virtual ativado (você verá `(.venv)` no início da linha de comando), instale as dependências:
+No seu terminal do WSL (Ubuntu):
 
 ```bash
-pip install -r requirements.txt
+cd ~/PythonProjects/paulo-investimentos-pessoais
 ```
 
-### 4. Configurar as Variáveis de Ambiente
+### 2. Configurar as Variáveis de Ambiente
 
-Crie um arquivo `.env` na raiz do projeto copiando o modelo do `.env.example`:
+Crie o arquivo `.env` a partir do modelo `.env.example`:
 
 ```bash
-copy .env.example .env
+cp .env.example .env
 ```
 
 Abra o arquivo `.env` e configure:
 
-- Os IDs das suas planilhas (já pré-preenchidos com os seus IDs originais).
-- A sua chave da API do Gemini (`GEMINI_API_KEY`), que pode ser obtida gratuitamente em: [Google AI Studio](https://aistudio.google.com/).
+- Os IDs das suas planilhas (`SPREADSHEET_BUDGET_ID` e `SPREADSHEET_ORDERS_ID`).
+- A sua chave da API do Gemini (`GEMINI_API_KEY`), obtida em [Google AI Studio](https://aistudio.google.com/).
+- A porta do servidor (padrão: `STREAMLIT_PORT=8502`).
 
-### 5. Rodar o Painel Streamlit
+### 3. Iniciar o Ambiente de Desenvolvimento
 
-Inicie a aplicação localmente:
+Execute o script de inicialização rápida:
 
 ```bash
-streamlit run app.py
+chmod +x 00-iniciar.sh
+./00-iniciar.sh
+```
+
+A aplicação estará acessível em: **[http://localhost:8502](http://localhost:8502)** (ou na porta configurada no `.env`).
+
+---
+
+## 🛠️ Comandos Úteis do Docker
+
+- **Subir os containers em background com build:**
+  ```bash
+  docker compose up -d --build
+  ```
+
+- **Visualizar os logs em tempo real:**
+  ```bash
+  docker compose logs -f
+  ```
+
+- **Parar os containers:**
+  ```bash
+  docker compose down
+  ```
+
+- **Reiniciar os containers:**
+  ```bash
+  docker compose restart
+  ```
+
+---
+
+## 📁 Estrutura de Diretórios e Arquitetura
+
+```text
+paulo-investimentos-pessoais/
+├── assets/
+│   └── css/
+│       └── styles.css              # Design system, glassmorphism e tema escuro
+├── src/
+│   ├── components/                 # Componentes de UI reutilizáveis
+│   │   ├── __init__.py
+│   │   ├── header.py               # Header da aplicação com popover de menu
+│   │   └── sidebar.py              # Barra lateral de configurações e conexões
+│   ├── tabs/                       # Módulos de páginas/abas isoladas
+│   │   ├── __init__.py
+│   │   ├── visao_geral.py          # Tab 1: Visão Geral, Alocação e Fluxo de Caixa
+│   │   ├── desempenho.py           # Tab 2: Desempenho Histórico e Benchmarks
+│   │   ├── extratos.py             # Tab 3: Extratos Detalhados e Filtros
+│   │   ├── fundamentalista.py      # Tab 4: Análise Fundamentalista e FIIs
+│   │   └── consultoria_ia.py       # Tab 5: Consultoria de Alocação com IA
+│   └── utils/                      # Funções utilitárias compartilhadas
+│       ├── __init__.py
+│       └── formatting.py           # Formatação de moedas e números PT-BR
+├── dashboard.py                    # Hub / Ponto de entrada principal do Streamlit
+├── data_loader.py                  # Carga, sanitização e sincronização Google Sheets / SQLite
+├── analytics.py                    # Motor de cálculos de carteira, TWR e cotações
+├── ai_allocator.py                 # Integração com Google Gemini 1.5 Flash
+├── db_manager.py                   # Gerenciamento do banco SQLite local de cache
+├── Dockerfile                      # Imagem Docker otimizada (Python 3.12-slim-bookworm)
+├── docker-compose.yml              # Orquestração do container de desenvolvimento
+├── 00-iniciar.sh                   # Script de inicialização rápida no WSL
+└── 00-iniciar.cmd                  # Atalho de execução para Windows (WSL)
 ```
 
 ---

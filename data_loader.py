@@ -763,14 +763,33 @@ TERMOS_CONTABEIS = {
     "Stock Based Compensation": "Remuneração Baseada em Ações",
 }
 
-def sync_fundamental_data_from_yfinance(ticker_orig):
+def sync_fundamental_data_from_yfinance(ticker_orig=None):
     """
     Busca os demonstrativos financeiros do yfinance e salva no SQLite local.
+    Se ticker_orig for None, sincroniza todos os tickers elegíveis presentes na carteira.
     """
     import yfinance as yf
     import db_manager
     from analytics import normalize_ticker, is_valid_yfinance_ticker
     
+    if ticker_orig is None:
+        # Busca todas as ordens para descobrir todos os tickers únicos
+        try:
+            df_ord = db_manager.get_table_data("ordens")
+            if df_ord.empty:
+                logger.warning("Nenhuma ordem encontrada no SQLite para sincronização global.")
+                return False
+            tickers_carteira = df_ord["Papel"].dropna().unique().tolist()
+            sucessos = 0
+            for t in tickers_carteira:
+                if is_valid_yfinance_ticker(t):
+                    if sync_fundamental_data_from_yfinance(t):
+                        sucessos += 1
+            return sucessos > 0
+        except Exception as e:
+            logger.error(f"Erro ao sincronizar dados fundamentalistas globais: {e}")
+            return False
+            
     ticker_norm = normalize_ticker(ticker_orig)
     if not is_valid_yfinance_ticker(ticker_orig):
         logger.warning(f"Ticker {ticker_orig} não é elegível para dados fundamentalistas.")
@@ -816,3 +835,4 @@ def sync_fundamental_data_from_yfinance(ticker_orig):
     except Exception as e:
         logger.error(f"Erro ao baixar dados fundamentalistas do yfinance para {ticker_orig}: {e}")
         return False
+
