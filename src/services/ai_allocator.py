@@ -2,6 +2,11 @@ import os
 import google.generativeai as genai
 import pandas as pd
 import streamlit as st
+from .analytics import get_usd_brl_rate
+from src.utils.logger import get_logger
+
+logger = get_logger("services", "ai_allocator")
+
 
 def initialize_gemini():
     """
@@ -43,7 +48,6 @@ def generate_allocation_tips(df_holdings, df_receitas, df_despesas, df_dividendo
         
         # Calcula o Capital Investido líquido (Aportes - Resgates/Vendas)
         if df_orders is not None and not df_orders.empty:
-            from analytics import get_usd_brl_rate
             usd_brl_rate = get_usd_brl_rate()
             for _, row in df_orders.iterrows():
                 action = str(row.get("Compra/Venda", "")).strip().upper()

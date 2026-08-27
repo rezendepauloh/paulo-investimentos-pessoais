@@ -1,8 +1,11 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from analytics import get_usd_brl_rate
+from src.services import get_usd_brl_rate
 from src.utils.formatting import format_number
+from src.utils.logger import get_logger
+
+logger = get_logger("tabs", "visao_geral")
 
 def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_dividendos):
     """

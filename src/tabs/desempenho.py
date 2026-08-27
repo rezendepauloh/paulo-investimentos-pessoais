@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from src.utils.logger import get_logger
+
+logger = get_logger("tabs", "desempenho")
 
 def render_tab_desempenho(df_perf):
     """

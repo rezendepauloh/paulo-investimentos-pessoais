@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Limpa o console
+clear
+
 # Cores para output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -10,6 +13,7 @@ NC='\033[0m'
 echo -e "${BLUE}==============================================${NC}"
 echo -e "${BLUE}  Iniciando Ambiente Docker - Investimentos  ${NC}"
 echo -e "${BLUE}==============================================${NC}"
+
 
 # Verifica se o Docker daemon está ativo
 if ! docker info > /dev/null 2>&1; then

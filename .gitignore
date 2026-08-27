@@ -1,7 +1,14 @@
 # Segurança - Arquivos Confidenciais
 .env
+*.json
+!package*.json
+!cspell.json
+!tsconfig.json
 credentials.json
+data/credentials.json
+data/*.json
 .streamlit/secrets.toml
+
 
 # Python e Ambientes Virtuais
 __pycache__/
@@ -33,3 +40,5 @@ scratch/
 # Banco de dados local SQLite
 data/
 *.db
+
+temp

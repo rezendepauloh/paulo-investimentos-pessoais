@@ -1,9 +1,12 @@
 import streamlit as st
 import pandas as pd
-import db_manager
-from data_loader import TERMOS_CONTABEIS, sync_fundamental_data_from_yfinance
-from analytics import is_valid_yfinance_ticker
+from src.database import db_manager
+from src.services import TERMOS_CONTABEIS, sync_fundamental_data_from_yfinance, is_valid_yfinance_ticker
+
 from src.utils.formatting import format_number
+from src.utils.logger import get_logger
+
+logger = get_logger("tabs", "fundamentalista")
 
 def render_tab_fundamentalista(df_holdings, df_dividendos):
     """
@@ -80,20 +83,38 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                     width='stretch'
                 )
     else:
+        DEMO_SLUGS = {
+            "balanco": "Balanço Patrimonial",
+            "dre": "DRE (Demonstrativo do Resultado)",
+            "fluxo": "Fluxo de Caixa"
+        }
+        SLUG_TO_LABEL_DEMO = DEMO_SLUGS
+        LABEL_TO_SLUG_DEMO = {v: k for k, v in DEMO_SLUGS.items()}
+        
+        url_subtab = st.query_params.get("subtab", "balanco")
+        if url_subtab not in SLUG_TO_LABEL_DEMO:
+            url_subtab = "balanco"
+            
+        current_demo_label = SLUG_TO_LABEL_DEMO[url_subtab]
+        demo_labels = list(DEMO_SLUGS.values())
+        default_demo_idx = demo_labels.index(current_demo_label)
+
         demo_sel = st.radio(
             "Demonstrativo para Análise:",
-            ["Balanço Patrimonial", "DRE (Demonstrativo do Resultado)", "Fluxo de Caixa"],
-            horizontal=True
+            demo_labels,
+            index=default_demo_idx,
+            horizontal=True,
+            key="fundamental_demo_radio"
         )
         
-        demonstrativo_map = {
-            "Balanço Patrimonial": "balanco",
-            "DRE (Demonstrativo do Resultado)": "dre",
-            "Fluxo de Caixa": "fluxo"
-        }
+        selected_demo_slug = LABEL_TO_SLUG_DEMO[demo_sel]
+        if st.query_params.get("subtab") != selected_demo_slug:
+            st.query_params["subtab"] = selected_demo_slug
+            logger.info(f"Sub-navegação Fundamentalista: {selected_demo_slug}")
         
-        demo_key = demonstrativo_map[demo_sel]
+        demo_key = selected_demo_slug
         periodo_key = periodo_sel.lower()
+
         
         df_fundamental = db_manager.get_fundamental_data(ativo_sel, demo_key, periodo_key)
         

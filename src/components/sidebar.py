@@ -2,8 +2,11 @@ import os
 from datetime import datetime
 import streamlit as st
 import pandas as pd
-import db_manager
-from data_loader import sync_google_sheets_to_sqlite, sync_fundamental_data_from_yfinance
+from src.database import db_manager
+from src.services import sync_google_sheets_to_sqlite, sync_fundamental_data_from_yfinance
+from src.utils.logger import get_logger
+
+logger = get_logger("components", "sidebar")
 
 def render_sidebar():
     """

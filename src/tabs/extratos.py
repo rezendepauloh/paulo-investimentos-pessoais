@@ -1,6 +1,30 @@
 import streamlit as st
 import pandas as pd
 from src.utils.formatting import format_number
+from src.utils.logger import get_logger
+
+logger = get_logger("tabs", "extratos")
+
+
+SUBTABS_EXTRATOS = {
+    "receitas": "🪙 Receitas",
+    "despesas": "💸 Despesas",
+    "dividendos": "📈 Dividendos",
+    "ordens": "📊 Ordens de Compra/Venda"
+}
+SLUG_TO_LABEL_EXTRATOS = SUBTABS_EXTRATOS
+LABEL_TO_SLUG_EXTRATOS = {v: k for k, v in SUBTABS_EXTRATOS.items()}
+
+CATEGORIAS_PROVENTOS = [
+    "Dividendo BR",
+    "Dividendo EUA",
+    "Rendimento FII",
+    "Aluguel Ações BR",
+    "Aluguel Ações EUA",
+    "Juros sobre Capital Próprio",
+    "Rendimento Renda Fixa",
+    "Frações"
+]
 
 def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
     """
@@ -8,22 +32,55 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
     """
     st.subheader("📑 Visualização dos Lançamentos e Histórico de Transações")
     
-    sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs(["Receitas", "Despesas", "Dividendos", "Ordens de Compra/Venda"])
+    # Sincroniza subtab com a URL (?subtab=slug)
+    url_subtab = st.query_params.get("subtab", "receitas")
+    if url_subtab not in SLUG_TO_LABEL_EXTRATOS:
+        url_subtab = "receitas"
+        
+    current_label = SLUG_TO_LABEL_EXTRATOS[url_subtab]
+    subtab_labels = list(SUBTABS_EXTRATOS.values())
+    default_idx = subtab_labels.index(current_label)
     
-    with sub_tab1:
+    selected_label = st.radio(
+        "Selecionar Extrato:",
+        options=subtab_labels,
+        index=default_idx,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="extratos_subtab_radio"
+    )
+    
+    selected_slug = LABEL_TO_SLUG_EXTRATOS[selected_label]
+    if st.query_params.get("subtab") != selected_slug:
+        st.query_params["subtab"] = selected_slug
+        logger.info(f"Sub-navegação Extratos: {selected_slug}")
+    
+    st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+    
+    if selected_slug == "receitas":
+
         st.markdown("### 🪙 Receitas")
-        if df_receitas.empty:
-            st.info("Nenhuma receita cadastrada.")
+        
+        # Filtra para exibir apenas receitas puras (não-patrimoniais)
+        df_receitas_puras = pd.DataFrame()
+        if df_receitas is not None and not df_receitas.empty:
+            if "Categoria" in df_receitas.columns:
+                df_receitas_puras = df_receitas[~df_receitas["Categoria"].isin(CATEGORIAS_PROVENTOS)].copy()
+            else:
+                df_receitas_puras = df_receitas.copy()
+
+        if df_receitas_puras.empty:
+            st.info("Nenhuma receita não-patrimonial cadastrada.")
         else:
             col_r1, col_r2, col_r3 = st.columns(3)
             with col_r1:
-                nomes_receitas = ["Todos"] + sorted(df_receitas["Nome"].dropna().unique().tolist())
+                nomes_receitas = ["Todos"] + sorted(df_receitas_puras["Nome"].dropna().unique().tolist())
                 nome_receita_sel = st.selectbox("Filtrar por Descrição:", nomes_receitas, key="filter_rec_nome")
             with col_r2:
-                categorias_receitas = ["Todas"] + sorted(df_receitas["Categoria"].dropna().unique().tolist())
+                categorias_receitas = ["Todas"] + sorted(df_receitas_puras["Categoria"].dropna().unique().tolist())
                 cat_receita_sel = st.selectbox("Filtrar por Categoria (Receitas):", categorias_receitas, key="filter_rec_cat")
             with col_r3:
-                df_temp = df_receitas.copy()
+                df_temp = df_receitas_puras.copy()
                 df_temp["Recebido em_dt"] = pd.to_datetime(df_temp["Recebido em"], errors='coerce')
                 df_temp["Mes_Ano"] = df_temp["Recebido em_dt"].dt.strftime("%m/%Y")
                 unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
@@ -31,7 +88,7 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
                 meses_anos = ["Todos"] + unique_months_sorted
                 mes_ano_rec_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_rec_mes_ano")
             
-            df_receitas_filtered = df_receitas.copy()
+            df_receitas_filtered = df_receitas_puras.copy()
             if nome_receita_sel != "Todos":
                 df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Nome"] == nome_receita_sel]
             if cat_receita_sel != "Todas":
@@ -73,7 +130,7 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
             </div>
             """, unsafe_allow_html=True)
             
-    with sub_tab2:
+    elif selected_slug == "despesas":
         st.markdown("### 🪙 Despesas")
         if df_despesas.empty:
             st.info("Nenhuma despesa cadastrada.")
@@ -145,20 +202,29 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
             </div>
             """, unsafe_allow_html=True)
             
-    with sub_tab3:
+    elif selected_slug == "dividendos":
         st.markdown("### 🪙 Dividendos recebidos")
-        if df_dividendos.empty:
-            st.info("Nenhum dividendo passivo lançado.")
+        
+        # Isola os proventos a partir de df_receitas ou do df_dividendos derivado
+        df_divs_base = pd.DataFrame()
+        if df_dividendos is not None and not df_dividendos.empty:
+            df_divs_base = df_dividendos.copy()
+        elif df_receitas is not None and not df_receitas.empty and "Categoria" in df_receitas.columns:
+            df_divs_base = df_receitas[df_receitas["Categoria"].isin(CATEGORIAS_PROVENTOS)].copy()
+
+        if df_divs_base.empty:
+            st.info("Nenhum dividendo ou provento passivo lançado.")
         else:
             col_d1, col_d2, col_d3 = st.columns(3)
             with col_d1:
-                ativos_dividendos = ["Todos"] + sorted(df_dividendos["Ativo"].dropna().unique().tolist())
-                ativo_div_sel = st.selectbox("Filtrar por Ativo (Dividendos):", ativos_dividendos, key="filter_div_ativo")
+                col_ativo_nome = "Ativo" if "Ativo" in df_divs_base.columns else "Nome"
+                ativos_dividendos = ["Todos"] + sorted(df_divs_base[col_ativo_nome].dropna().unique().tolist())
+                ativo_div_sel = st.selectbox("Filtrar por Ativo / Descrição:", ativos_dividendos, key="filter_div_ativo")
             with col_d2:
-                categorias_dividendos = ["Todas"] + sorted(df_dividendos["Categoria"].dropna().unique().tolist())
+                categorias_dividendos = ["Todas"] + sorted(df_divs_base["Categoria"].dropna().unique().tolist())
                 cat_div_sel = st.selectbox("Filtrar por Categoria (Dividendos):", categorias_dividendos, key="filter_div_cat")
             with col_d3:
-                df_temp = df_dividendos.copy()
+                df_temp = df_divs_base.copy()
                 df_temp["Recebido em_dt"] = pd.to_datetime(df_temp["Recebido em"], errors='coerce')
                 df_temp["Mes_Ano"] = df_temp["Recebido em_dt"].dt.strftime("%m/%Y")
                 unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
@@ -166,9 +232,9 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
                 meses_anos = ["Todos"] + unique_months_sorted
                 mes_ano_div_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_div_mes_ano")
             
-            df_dividendos_filtered = df_dividendos.copy()
+            df_dividendos_filtered = df_divs_base.copy()
             if ativo_div_sel != "Todos":
-                df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Ativo"] == ativo_div_sel]
+                df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered[col_ativo_nome] == ativo_div_sel]
             if cat_div_sel != "Todas":
                 df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Categoria"] == cat_div_sel]
             if mes_ano_div_sel != "Todos":
@@ -208,7 +274,7 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
             </div>
             """, unsafe_allow_html=True)
             
-    with sub_tab4:
+    elif selected_slug == "ordens":
         st.markdown("### 🪙 Histórico de Ordens de Compra e Venda")
         if df_orders.empty:
             st.info("Nenhuma ordem cadastrada.")

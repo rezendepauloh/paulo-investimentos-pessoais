@@ -46,16 +46,19 @@ A aplicação estará acessível em: **[http://localhost:8502](http://localhost:
 ## 🛠️ Comandos Úteis do Docker
 
 - **Subir os containers em background com build:**
+
   ```bash
   docker compose up -d --build
   ```
 
 - **Visualizar os logs em tempo real:**
+
   ```bash
   docker compose logs -f
   ```
 
 - **Parar os containers:**
+
   ```bash
   docker compose down
   ```
@@ -71,29 +74,50 @@ A aplicação estará acessível em: **[http://localhost:8502](http://localhost:
 
 ```text
 paulo-investimentos-pessoais/
+├── .streamlit/
+│   └── config.toml                 # Configurações de porta, CORS e servidor
 ├── assets/
 │   └── css/
 │       └── styles.css              # Design system, glassmorphism e tema escuro
+├── data/
+│   ├── credentials.json            # Chave Google Cloud (ignorado pelo git)
+│   └── investimentos.db            # Banco de dados local SQLite
 ├── src/
 │   ├── components/                 # Componentes de UI reutilizáveis
 │   │   ├── __init__.py
 │   │   ├── header.py               # Header da aplicação com popover de menu
 │   │   └── sidebar.py              # Barra lateral de configurações e conexões
+│   ├── database/                   # Camada de persistência local SQLite
+│   │   ├── __init__.py
+│   │   └── db_manager.py           # Gestão de conexões, delta sync e tabelas
+│   ├── services/                   # Motores de cálculo, conectores e inteligência
+│   │   ├── __init__.py
+│   │   ├── data_loader.py          # Carga e sanitização Google Sheets / SQLite
+│   │   ├── analytics.py            # Motor de cálculos TWR, cotações e benchmarks
+│   │   ├── ai_allocator.py         # Integração com Google Gemini 1.5 Flash
+│   │   ├── deduplication.py        # Geração de hash SHA-256 e detector de duplicatas
+│   │   ├── ingestion_parser.py     # Parsers para OFX, CSV e OCR com Gemini Vision
+│   │   └── pluggy_service.py       # Conector com a API Open Finance da Pluggy
 │   ├── tabs/                       # Módulos de páginas/abas isoladas
 │   │   ├── __init__.py
 │   │   ├── visao_geral.py          # Tab 1: Visão Geral, Alocação e Fluxo de Caixa
 │   │   ├── desempenho.py           # Tab 2: Desempenho Histórico e Benchmarks
 │   │   ├── extratos.py             # Tab 3: Extratos Detalhados e Filtros
 │   │   ├── fundamentalista.py      # Tab 4: Análise Fundamentalista e FIIs
-│   │   └── consultoria_ia.py       # Tab 5: Consultoria de Alocação com IA
+│   │   ├── consultoria_ia.py       # Tab 5: Consultoria de Alocação com IA
+│   │   └── importar_gastos.py      # Tab 6: Ingestão Inteligente e Conciliação
 │   └── utils/                      # Funções utilitárias compartilhadas
 │       ├── __init__.py
-│       └── formatting.py           # Formatação de moedas e números PT-BR
+│       ├── formatting.py           # Formatação de moedas, números e normalização
+│       └── logger.py               # Sistema de logging centralizado rotativo e colorido
+├── logs/                           # Diretório de logs rotativos (3MB, máx 3 arquivos)
+│   ├── app/                        # Logs da aplicação e ciclo de vida
+│   ├── components/                 # Logs do header e sidebar
+│   ├── database/                   # Logs de persistência SQLite
+│   ├── services/                   # Logs de serviços e APIs
+│   └── tabs/                       # Logs das páginas/abas da UI
+├── scripts/                        # Scripts auxiliares de diagnóstico e migração
 ├── dashboard.py                    # Hub / Ponto de entrada principal do Streamlit
-├── data_loader.py                  # Carga, sanitização e sincronização Google Sheets / SQLite
-├── analytics.py                    # Motor de cálculos de carteira, TWR e cotações
-├── ai_allocator.py                 # Integração com Google Gemini 1.5 Flash
-├── db_manager.py                   # Gerenciamento do banco SQLite local de cache
 ├── Dockerfile                      # Imagem Docker otimizada (Python 3.12-slim-bookworm)
 ├── docker-compose.yml              # Orquestração do container de desenvolvimento
 ├── 00-iniciar.sh                   # Script de inicialização rápida no WSL
@@ -101,6 +125,25 @@ paulo-investimentos-pessoais/
 ```
 
 ---
+
+## 🧭 Navegação Rápida e Deep Linking (URLs com Query Params)
+
+A aplicação sincroniza automaticamente o estado das páginas e subabas na barra de endereços do navegador. Ao recarregar a página (**F5**) ou compartilhar o link, você é levado diretamente para o ponto exato:
+
+| Página | Parâmetro de URL | Exemplos de Subabas (`&subtab=`) |
+| :--- | :--- | :--- |
+| **📊 Visão Geral e Orçamento** | `?tab=visao_geral` | — |
+| **📈 Desempenho e Benchmarks** | `?tab=desempenho` | — |
+| **📑 Extratos e Lançamentos** | `?tab=extratos` | `&subtab=receitas`, `&subtab=despesas`, `&subtab=dividendos`, `&subtab=ordens` |
+| **🔍 Análise Fundamentalista** | `?tab=fundamentalista` | `&subtab=balanco`, `&subtab=dre`, `&subtab=fluxo` |
+| **🤖 Consultoria de Alocação com IA** | `?tab=consultoria_ia` | — |
+| **📥 Importação de Dados** | `?tab=importar_gastos` | `&subtab=comprovantes`, `&subtab=arquivos`, `&subtab=open_finance` |
+
+*Exemplo de acesso direto:* `http://localhost:8502/?tab=extratos&subtab=despesas`
+
+---
+
+
 
 ## 🔑 Como Obter o JSON de Conta de Serviço do Google Cloud
 
@@ -149,7 +192,13 @@ Para que o seu aplicativo Python acesse com segurança suas planilhas privadas d
 
 ## 🎨 Principais Recursos do Painel
 
-- **Abas Customizadas:** Divisão entre Visão Geral (orçamentos e carteira), Desempenho Histórico, Visualização de Extrato de Lançamentos e Consultoria com IA.
+- **Abas Customizadas:** Divisão entre Visão Geral (orçamentos e carteira), Desempenho Histórico, Visualização de Extrato de Lançamentos, Análise Fundamentalista, Consultoria com IA e **Importação Inteligente de Dados**.
+- **Ingestão Híbrida Inteligente (Nova Feature):**
+  - **📸 Leitura de Comprovantes via OCR/IA:** Extração automática de prints, faturas e comprovantes Pix com Google Gemini Vision e Schema estruturado (Pydantic).
+  - **📄 Arquivos Bancários (.OFX / .CSV):** Leitura de extratos bancários com detecção automática de formatos e separadores.
+  - **🏦 Open Finance (Pluggy):** Sincronização direta de transações bancárias via API.
+  - **🛡️ Detecção Rigorosa de Duplicidades:** Gerador de Hash SHA-256 (`Data_Valor_Descrição`) que compara os lotes contra as transações já salvas e contra duplicatas internas.
+  - **📋 Conciliação Interativa (Human-in-the-Loop):** Interface com `st.data_editor` permitindo editar categoria, valor e aprovar registros antes de persistir no Google Sheets e SQLite.
 - **Modo Demonstração (Fallback inteligente):** O aplicativo carrega dados simulados de altíssima qualidade caso as credenciais reais ainda não tenham sido configuradas. Isso permite testar todos os gráficos e a consultoria da IA instantaneamente!
 - **Gráficos Dinâmicos com Plotly:** Gráficos interativos com zoom e exibição de valores nos eixos para facilitar o monitoramento.
 - **Benchmarks Nacionais e Internacionais:**
@@ -161,8 +210,41 @@ Para que o seu aplicativo Python acesse com segurança suas planilhas privadas d
 
 ## 🚀 Upgrades e Melhorias Recentes
 
+- **Módulo de Ingestão Híbrida e Conciliação Humana**: Entrada unificada para OCR Multimodal, arquivos bancários (.OFX/.CSV) e API Open Finance da Pluggy com persistência imediata em lote no Google Sheets e SQLite local.
+- **Deduplicação Determinística com Hashing SHA-256**: Prevenção ativa de lançamentos duplicados comparando novos dados com bases históricas.
 - **Cálculo de Rentabilidade TWR (Time-Weighted Return) por Cotas**: Implementamos a fórmula matemática padrão da ANBIMA e das corretoras profissionais. Agora, novos aportes e resgates volumosos não causam mais o efeito de "diluição de rentabilidade", gerando gráficos históricos 100% corretos.
 - **Normalização Multiplicativa de Splits e Bonificações**: Suporte total a desdobramentos de ativos de forma retroativa e proporcional ao tempo, garantindo que o custo médio e as quantidades históricas fiquem matematicamente alinhados com o estado atual.
 - **Correção Dinâmica e Silenciosa de Decimais PT-BR**: Sistema inteligente baseado em Regex para converter, ler e autocorrigir valores do Google Sheets que sofreram distorções de localidade (ponto vs vírgula decimal brasileira).
 - **Desacoplamento Completo e Configuração Dinâmica (`.env`)**: Removemos todos os dados sensíveis e tabelas estáticas de splits ou correções de ativos do código-fonte. Agora, tudo é lido de forma dinâmica de variáveis JSON em `.env` (`CORRECOES_CONHECIDAS` e `SPLITS_OFICIAIS`).
 - **Sistema de Logs Profissional e Rotativo**: Monitoramento robusto através de um logger rotativo configurado para manter no máximo 3 arquivos de log de até 3MB cada (limpando os mais antigos automaticamente) para garantir a saúde do espaço em disco.
+
+---
+
+## 🩺 Troubleshooting / Resolução de Problemas Comuns
+
+### 1. `NS_ERROR_NET_TIMEOUT` ou `localhost:8502` não responde no navegador
+
+Caso o container esteja ativo (`docker compose logs` exibindo `Uvicorn server started`), mas o navegador dê timeout no Windows:
+
+- **Causa comum:** Travamento no serviço de _localhost forwarding_ do WSL 2.
+- **Solução:**
+  1. No terminal do PowerShell do Windows (fora do WSL), encerre o WSL:
+     ```powershell
+     wsl --shutdown
+     ```
+  2. Abra novamente o WSL e inicie o projeto:
+     ```bash
+     ./00-iniciar.sh
+     ```
+  3. Alternativa direta pelo IP interno do WSL no navegador:
+     ```bash
+     hostname -I | awk '{print $1}'
+     # Acesse: http://<IP_DO_WSL>:8502
+     ```
+
+### 2. Recriar containers e limpar caches do Docker
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```

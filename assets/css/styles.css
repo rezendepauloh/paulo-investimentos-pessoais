@@ -2,208 +2,284 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-    --primary-color: #00E676;
-    --primary-hover: #00c853;
-    --primary-glow: rgba(0, 230, 118, 0.35);
-    --bg-dark: #0f1117;
-    --card-bg: #1a1d24;
-    --card-border: rgba(255, 255, 255, 0.08);
-    --card-border-hover: rgba(0, 230, 118, 0.4);
-    --text-main: #f3f4f6;
-    --text-muted: #9ca3af;
+  --primary-color: #00e676;
+  --primary-hover: #00c853;
+  --primary-glow: rgba(0, 230, 118, 0.35);
+  --bg-dark: #0f1117;
+  --card-bg: #1a1d24;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-border-hover: rgba(0, 230, 118, 0.4);
+  --text-main: #f3f4f6;
+  --text-muted: #9ca3af;
 }
 
-html, body, [class*="css"] {
-    font-family: 'Outfit', sans-serif !important;
+html,
+body,
+[class*='css'] {
+  font-family: 'Outfit', sans-serif !important;
 }
 
 /* Transparência e ajuste do Header padrão do Streamlit */
-header[data-testid="stHeader"], [data-testid="stHeader"] {
-    background: transparent !important;
-    height: 3.5rem !important;
-    z-index: 10 !important;
+header[data-testid='stHeader'],
+[data-testid='stHeader'] {
+  background: transparent !important;
+  height: 3.5rem !important;
+  z-index: 10 !important;
 }
 
 /* Container Principal */
-.block-container, div[data-testid="stMainBlockContainer"] {
-    padding-top: 1.5rem !important;
-    padding-bottom: 2rem !important;
-    max-width: 96% !important;
+.block-container,
+div[data-testid='stMainBlockContainer'] {
+  padding-top: 1.5rem !important;
+  padding-bottom: 2rem !important;
+  max-width: 96% !important;
 }
 
 /* Header estilizado e divisor */
 .dashboard-header-left {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .dashboard-title {
-    font-size: 26px;
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: -0.5px;
-    margin: 0 !important;
-    padding: 0 !important;
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.5px;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .dashboard-subtitle {
-    font-size: 13.5px;
-    color: #9ca3af;
-    margin-top: 4px !important;
-    margin-bottom: 0 !important;
+  font-size: 13.5px;
+  color: #9ca3af;
+  margin-top: 4px !important;
+  margin-bottom: 0 !important;
 }
 
 .header-divider {
-    height: 1px;
-    background: rgba(255, 255, 255, 0.08);
-    margin-top: 0.8rem;
-    margin-bottom: 1.5rem;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin-top: 0.8rem;
+  margin-bottom: 1.5rem;
 }
 
 /* Botão Menu Popover no Topo */
-div[data-testid="stPopover"] {
-    display: flex;
-    justify-content: flex-end;
+div[data-testid='stPopover'] {
+  display: flex;
+  justify-content: flex-end;
 }
 
-div[data-testid="stPopover"] > button {
-    background-color: #1a1d24 !important;
-    border: 1px solid rgba(255, 255, 255, 0.15) !important;
-    border-radius: 8px !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
-    padding: 6px 16px !important;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
-    transition: all 0.2s ease !important;
+div[data-testid='stPopover'] > button {
+  background-color: #1a1d24 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 8px !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  padding: 6px 16px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25) !important;
+  transition: all 0.2s ease !important;
 }
 
-div[data-testid="stPopover"] > button:hover {
-    border-color: #00E676 !important;
-    color: #00E676 !important;
-    box-shadow: 0 0 12px rgba(0, 230, 118, 0.25) !important;
+div[data-testid='stPopover'] > button:hover {
+  border-color: #00e676 !important;
+  color: #00e676 !important;
+  box-shadow: 0 0 12px rgba(0, 230, 118, 0.25) !important;
 }
 
 /* Painel de Menu Popover (Drawer suspenso) */
-div[data-testid="stPopoverBody"] {
-    background-color: #12141a !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    border-radius: 14px !important;
-    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6) !important;
-    padding: 16px !important;
-    min-width: 290px !important;
+div[data-testid='stPopoverBody'] {
+  background-color: #12141a !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.6) !important;
+  padding: 16px !important;
+  min-width: 290px !important;
 }
 
 .menu-popover-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: #ffffff;
-    padding-bottom: 12px;
-    margin-bottom: 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Botões do Menu */
-div[data-testid="stPopoverBody"] button {
-    border-radius: 8px !important;
-    font-size: 14px !important;
-    font-weight: 500 !important;
-    text-align: left !important;
-    justify-content: flex-start !important;
-    padding: 10px 14px !important;
-    margin-bottom: 6px !important;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+div[data-testid='stPopoverBody'] button {
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  padding: 10px 14px !important;
+  margin-bottom: 6px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
-div[data-testid="stPopoverBody"] button[kind="secondary"] {
-    background-color: #1a1d24 !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    color: #d1d5db !important;
+div[data-testid='stPopoverBody'] button[kind='secondary'] {
+  background-color: #1a1d24 !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #d1d5db !important;
 }
 
-div[data-testid="stPopoverBody"] button[kind="secondary"]:hover {
-    background-color: #242832 !important;
-    border-color: rgba(255, 255, 255, 0.2) !important;
-    color: #ffffff !important;
+div[data-testid='stPopoverBody'] button[kind='secondary']:hover {
+  background-color: #242832 !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
 }
 
-div[data-testid="stPopoverBody"] button[kind="primary"] {
-    background-color: #ff4b4b !important;
-    border: 1px solid #ff4b4b !important;
-    color: #ffffff !important;
-    font-weight: 700 !important;
-    box-shadow: 0 4px 14px rgba(255, 75, 75, 0.35) !important;
+div[data-testid='stPopoverBody'] button[kind='primary'] {
+  background-color: #ff4b4b !important;
+  border: 1px solid #ff4b4b !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 14px rgba(255, 75, 75, 0.35) !important;
 }
-
-
 
 /* Cards de Métricas Premium */
 .metric-card {
-    background: #1a1d24;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    padding: 20px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    margin-bottom: 16px;
-    transition: all 0.3s ease;
+  background: #1a1d24;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
 }
 
 .metric-card:hover {
-    transform: translateY(-3px);
-    border-color: rgba(0, 230, 118, 0.35);
-    box-shadow: 0 8px 24px rgba(0, 230, 118, 0.12);
+  transform: translateY(-3px);
+  border-color: rgba(0, 230, 118, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 230, 118, 0.12);
 }
 
 .metric-label {
-    font-size: 13px;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    font-weight: 600;
-    margin-bottom: 6px;
+  font-size: 13px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 600;
+  margin-bottom: 6px;
 }
 
 .metric-value {
-    font-size: 26px;
-    font-weight: 700;
-    color: #ffffff;
-    font-family: 'Outfit', sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: #ffffff;
+  font-family: 'Outfit', sans-serif;
 }
 
 .metric-delta-positive {
-    color: #00E676;
-    font-size: 13px;
-    font-weight: 600;
-    margin-top: 6px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  color: #00e676;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .metric-delta-negative {
-    color: #FF5252;
-    font-size: 13px;
-    font-weight: 600;
-    margin-top: 6px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  color: #ff5252;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Estilização para tabelas e dataframes */
-[data-testid="stDataFrame"] {
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-    border-radius: 10px !important;
-    overflow: hidden !important;
+[data-testid='stDataFrame'] {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
 }
 
 /* Sidebar aprimorada */
-section[data-testid="stSidebar"] {
-    background-color: #12141a !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+section[data-testid='stSidebar'] {
+  background-color: #12141a !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+/* =========================================
+   COMPONENTE: SUBTABS (Navegação em Abas)
+   ========================================= */
+
+/* Container horizontal das abas */
+div[data-testid='stRadio'] > div[role='radiogroup'],
+div[data-testid='stRadioGroup'] {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 24px !important;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
+  padding-bottom: 0px !important;
+  margin-bottom: 20px !important;
+}
+
+/* Oculta as bolinhas nativas do radio (suporta classes do Windows, Linux e seletores estruturais universais) */
+div[class*='etak9234'],
+div[class*='etak9235'],
+div[data-testid='stRadio']
+  label
+  > div:first-child:not([data-testid='stMarkdownContainer']),
+div[data-testid='stRadioGroup']
+  label
+  > div:first-child:not([data-testid='stMarkdownContainer']),
+label[data-testid='stRadioOption']
+  > div:first-child:not([data-testid='stMarkdownContainer']),
+label[data-baseweb='radio']
+  > div:first-child:not([data-testid='stMarkdownContainer']),
+div[data-testid='stRadio'] label > div[aria-hidden='true'],
+div[data-testid='stRadioGroup'] label > div[aria-hidden='true'],
+div[data-testid='stRadio'] input[type='radio'],
+div[data-testid='stRadioGroup'] input[type='radio'] {
+  display: none !important;
+}
+
+/* Estilo do texto inativo (simulando a aba não selecionada) */
+div[data-testid='stRadio'] > div[role='radiogroup'] > label,
+div[data-testid='stRadioGroup'] > label,
+label[data-testid='stRadioOption'] {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  padding: 8px 4px !important;
+  color: #b0b0b0 !important;
+  cursor: pointer !important;
+  margin: 0 !important;
+}
+
+div[data-testid='stRadio'] div[data-testid='stMarkdownContainer'] p,
+div[data-testid='stRadioGroup'] div[data-testid='stMarkdownContainer'] p {
+  font-size: 1rem !important;
+  margin: 0 !important;
+  color: inherit !important;
+}
+
+/* Hover leve */
+div[data-testid='stRadio'] > div[role='radiogroup'] > label:hover,
+div[data-testid='stRadioGroup'] > label:hover,
+label[data-testid='stRadioOption']:hover {
+  color: #ff4b4b !important;
+}
+
+/* Aba Ativa (Linha vermelha indicadora) */
+label[data-testid='stRadioOption']:has(input:checked),
+label[data-testid='stRadioOption'][data-selected='true'],
+label[data-testid='stRadioOption'][aria-checked='true'],
+label[data-testid='stRadioOption']:has(input[checked]),
+div[data-testid='stRadio'] > div[role='radiogroup'] > label:has(input:checked),
+div[data-testid='stRadioGroup'] > label:has(input:checked) {
+  color: #ff4b4b !important;
+  border-bottom: 2px solid #ff4b4b !important;
+  font-weight: 600 !important;
 }

@@ -6,14 +6,22 @@ services:
     container_name: paulo_investimentos_app
     restart: unless-stopped
     ports:
-      - "${STREAMLIT_PORT:-8501}:${STREAMLIT_PORT:-8501}"
+      - "${STREAMLIT_PORT:-8502}:${STREAMLIT_PORT:-8502}"
+
+
     environment:
       - TZ=America/Campo_Grande
+      - STREAMLIT_PORT=${STREAMLIT_PORT:-8502}
     env_file:
       - .env
+
 
     volumes:
       - .:/app
       - /app/__pycache__
-    command: sh -c "streamlit run dashboard.py --server.port=$${STREAMLIT_PORT:-8501} --server.address=0.0.0.0"
+    command: sh -c "streamlit run dashboard.py --server.port=$${STREAMLIT_PORT:-8502}"
+
+
+
+
 

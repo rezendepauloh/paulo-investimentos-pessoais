@@ -1,4 +1,23 @@
+import re
+import unicodedata
 import pandas as pd
+
+def normalize_text(text: str) -> str:
+    """
+    Normaliza texto removendo acentos, pontuação, múltiplos espaços e convertendo para minúsculas.
+    Útil para comparações e geração de hashes determinísticos.
+    """
+    if pd.isna(text) or text is None:
+        return ""
+    text_str = str(text).strip().lower()
+    # Remove acentos
+    text_str = unicodedata.normalize("NFKD", text_str)
+    text_str = "".join([c for c in text_str if not unicodedata.combining(c)])
+    # Remove pontuações e caracteres especiais
+    text_str = re.sub(r"[^\w\s]", "", text_str)
+    # Remove múltiplos espaços
+    text_str = re.sub(r"\s+", " ", text_str).strip()
+    return text_str
 
 def format_number(val, is_currency=False, currency="BRL", decimals=2):
     """

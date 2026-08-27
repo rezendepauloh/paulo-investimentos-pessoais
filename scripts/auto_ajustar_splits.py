@@ -4,12 +4,15 @@ import pandas as pd
 import datetime
 from dotenv import load_dotenv
 
+import sys
 # Carrega configurações
 load_dotenv(override=True)
 
-from data_loader import clean_currency, clean_float, clean_int
-from analytics import normalize_ticker, is_valid_yfinance_ticker
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.services import clean_currency, clean_float, clean_int, normalize_ticker, is_valid_yfinance_ticker
 import yfinance as yf
+
 
 print("=== INICIANDO AJUSTE AUTOMÁTICO DE SPLITS E BONIFICAÇÕES ===")
 

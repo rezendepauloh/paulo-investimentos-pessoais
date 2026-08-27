@@ -33,13 +33,15 @@ logger.addHandler(console_handler)
 
 logger.info("=== INICIANDO DIAGNÓSTICO DA CARTEIRA HISTÓRICA ===")
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 try:
-    from data_loader import get_orders_data
-    from analytics import normalize_ticker
+    from src.services import get_orders_data, normalize_ticker
     import yfinance as yf
 except Exception as e:
     logger.error(f"Erro ao importar dependências: {e}")
     sys.exit(1)
+
 
 # 1. Carrega ordens
 try:

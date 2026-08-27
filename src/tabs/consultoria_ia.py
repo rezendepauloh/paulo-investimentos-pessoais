@@ -1,5 +1,10 @@
 import streamlit as st
-from ai_allocator import generate_allocation_tips
+from src.services import generate_allocation_tips
+from src.utils.logger import get_logger
+
+logger = get_logger("tabs", "consultoria_ia")
+
+
 
 def render_tab_consultoria_ia(df_holdings, df_receitas, df_despesas, df_dividendos, df_orders):
     """

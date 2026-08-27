@@ -36,6 +36,9 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:${STREAMLIT_PORT}/_stcore/health || exit 1
 
 # Comando padrão de inicialização
-CMD ["sh", "-c", "streamlit run dashboard.py --server.port=${STREAMLIT_PORT} --server.address=0.0.0.0"]
+CMD ["streamlit", "run", "dashboard.py"]
+
+
+
 
 

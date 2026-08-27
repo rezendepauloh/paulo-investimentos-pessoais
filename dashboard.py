@@ -2,6 +2,11 @@ import os
 import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
+from src.utils.logger import get_logger
+
+logger = get_logger("app", "dashboard")
+logger.info("🚀 Inicializando painel Paulo - Finanças & Investimentos...")
+
 
 # Carrega variáveis de ambiente
 load_dotenv()
@@ -30,10 +35,16 @@ from src.tabs import (
     render_tab_desempenho,
     render_tab_extratos,
     render_tab_fundamentalista,
-    render_tab_consultoria_ia
+    render_tab_consultoria_ia,
+    render_tab_importar_gastos
 )
-from data_loader import get_budget_data, get_orders_data
-from analytics import calculate_portfolio_holdings, get_historical_performance
+from src.services import (
+    get_budget_data,
+    get_orders_data,
+    calculate_portfolio_holdings,
+    get_historical_performance
+)
+
 
 # Renderiza Header e obtém página ativa
 current_page = render_header()
@@ -84,3 +95,5 @@ elif current_page == "fundamentalista" or current_page == "🔍 Análise Fundame
     render_tab_fundamentalista(df_holdings, df_dividendos)
 elif current_page == "consultoria_ia" or current_page == "🤖 Consultoria de Alocação com IA":
     render_tab_consultoria_ia(df_holdings, df_receitas, df_despesas, df_dividendos, df_orders)
+elif current_page == "importar_gastos" or current_page == "📥 Importação de Dados para GSheets":
+    render_tab_importar_gastos(df_receitas, df_despesas)
