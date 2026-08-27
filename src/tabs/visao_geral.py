@@ -15,6 +15,18 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         st.warning("Nenhuma ordem ativa na carteira de investimentos.")
         return
 
+    # Leitura dos filtros definidos na sidebar
+    modo_privacidade = st.session_state.get("vg_modo_privacidade", False)
+    filtro_mes_ano = st.session_state.get("vg_filtro_mes_ano", "Mais Recente (Automático)")
+    classes_selecionadas = st.session_state.get("vg_classes_selecionadas", [])
+    filtro_essencial = st.session_state.get("vg_essencial_filtro", "Todos os Gastos")
+
+    # Aplica filtro de classes de ativos sobre o df_holdings
+    if classes_selecionadas and "tipo" in df_holdings.columns:
+        df_holdings_filtered = df_holdings[df_holdings["tipo"].isin(classes_selecionadas)]
+    else:
+        df_holdings_filtered = df_holdings
+
     # Função para filtrar lançamentos ocorridos (Dias até = Já creditado/debitado ou <= 0)
     def filter_realized(df_budget, col_dias):
         if df_budget.empty:
@@ -37,14 +49,25 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
     df_receitas_realized = filter_realized(df_receitas, "Dias até")
     df_despesas_realized = filter_realized(df_despesas, "Dias até")
 
-    # Métricas Globais
-    total_market_val = df_holdings["valor_atual"].sum()
+    # Aplica filtro de essencialidade nas despesas se selecionado
+    if filtro_essencial == "Apenas Essenciais" and "Essencial vs. Não Essencial" in df_despesas_realized.columns:
+        df_despesas_realized = df_despesas_realized[df_despesas_realized["Essencial vs. Não Essencial"].str.lower().str.contains("essencial") & ~df_despesas_realized["Essencial vs. Não Essencial"].str.lower().str.contains("não")]
+    elif filtro_essencial == "Apenas Não Essenciais" and "Essencial vs. Não Essencial" in df_despesas_realized.columns:
+        df_despesas_realized = df_despesas_realized[df_despesas_realized["Essencial vs. Não Essencial"].str.lower().str.contains("não")]
+
+    # Métricas Globais (respeitando classes filtradas)
+    total_market_val = df_holdings_filtered["valor_atual"].sum() if not df_holdings_filtered.empty else 0.0
     
     # Calcula o Capital Investido líquido (Aportes - Resgates/Vendas)
     total_invested = 0.0
     if not df_orders.empty:
         usd_brl_rate = get_usd_brl_rate()
+        active_tickers = df_holdings_filtered["ticker"].tolist() if not df_holdings_filtered.empty else []
         for _, row in df_orders.iterrows():
+            papel = str(row.get("Papel", "")).strip()
+            if active_tickers and papel not in active_tickers:
+                continue
+
             action = str(row.get("Compra/Venda", "")).strip().upper()
             val = float(row.get("Total líquido", 0))
             moeda = str(row.get("Moeda", "BRL")).strip().upper()
@@ -64,25 +87,33 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
             elif "VENDA" in action or action == "V":
                 total_invested -= val_brl
     else:
-        total_invested = df_holdings["total_investido"].sum() if not df_holdings.empty else 0.0
+        total_invested = df_holdings_filtered["total_investido"].sum() if not df_holdings_filtered.empty else 0.0
         
     total_profit = total_market_val - total_invested
     total_return_pct = (total_profit / total_invested) * 100.0 if total_invested > 0 else 0.0
     
-    # Identifica o mês de análise (o mês mais recente com lançamentos ocorridos ou o mês atual)
+    # Identifica o mês de análise conforme o filtro da sidebar
     target_year = pd.Timestamp.now().year
     target_month = pd.Timestamp.now().month
     
-    all_dates = []
-    if not df_receitas_realized.empty and "Recebido em" in df_receitas_realized.columns:
-        all_dates.extend(df_receitas_realized["Recebido em"].dropna().tolist())
-    if not df_despesas_realized.empty and "Gasto em" in df_despesas_realized.columns:
-        all_dates.extend(df_despesas_realized["Gasto em"].dropna().tolist())
-        
-    if all_dates:
-        latest_date = pd.to_datetime(all_dates).max()
-        target_year = latest_date.year
-        target_month = latest_date.month
+    if filtro_mes_ano and filtro_mes_ano != "Mais Recente (Automático)":
+        try:
+            m_part, y_part = filtro_mes_ano.split("/")
+            target_month = int(m_part)
+            target_year = int(y_part)
+        except Exception:
+            pass
+    else:
+        all_dates = []
+        if not df_receitas_realized.empty and "Recebido em" in df_receitas_realized.columns:
+            all_dates.extend(df_receitas_realized["Recebido em"].dropna().tolist())
+        if not df_despesas_realized.empty and "Gasto em" in df_despesas_realized.columns:
+            all_dates.extend(df_despesas_realized["Gasto em"].dropna().tolist())
+            
+        if all_dates:
+            latest_date = pd.to_datetime(all_dates).max()
+            target_year = latest_date.year
+            target_month = latest_date.month
         
     df_rec_curr_month = df_receitas_realized[
         (pd.to_datetime(df_receitas_realized["Recebido em"]).dt.year == target_year) & 
@@ -111,13 +142,13 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
     total_receitas = df_receitas_realized["Valor"].sum() if not df_receitas_realized.empty else 0.0
     total_despesas = df_despesas_realized["Valor"].sum() if not df_despesas_realized.empty else 0.0
     
-    # Formata valores para exibição no estilo PT-BR
-    total_market_val_formatted = format_number(total_market_val, is_currency=True, currency="BRL")
-    total_invested_formatted = format_number(total_invested, is_currency=True, currency="BRL")
-    total_profit_formatted = format_number(abs(total_profit), is_currency=True, currency="BRL")
-    total_return_pct_formatted = format_number(abs(total_return_pct), decimals=2)
-    saving_rate_formatted = format_number(saving_rate, is_currency=True, currency="BRL")
-    saving_pct_formatted = format_number(saving_pct, decimals=1)
+    # Formata valores para exibição no estilo PT-BR com suporte a Modo Privacidade
+    total_market_val_formatted = format_number(total_market_val, is_currency=True, currency="BRL", mask_privacy=modo_privacidade)
+    total_invested_formatted = format_number(total_invested, is_currency=True, currency="BRL", mask_privacy=modo_privacidade)
+    total_profit_formatted = format_number(abs(total_profit), is_currency=True, currency="BRL", mask_privacy=modo_privacidade)
+    total_return_pct_formatted = format_number(abs(total_return_pct), decimals=2, mask_privacy=modo_privacidade)
+    saving_rate_formatted = format_number(saving_rate, is_currency=True, currency="BRL", mask_privacy=modo_privacidade)
+    saving_pct_formatted = format_number(saving_pct, decimals=1, mask_privacy=modo_privacidade)
     
     # Seção de Métricas Premium (Cards HTML Customizados)
     col1, col2, col3, col4 = st.columns(4)
@@ -143,6 +174,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
     with col3:
         profit_class = "metric-delta-positive" if total_profit >= 0 else "metric-delta-negative"
         prefix = "+" if total_profit >= 0 else "-"
+
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-label">Lucro/Prejuízo Total</div>
@@ -175,7 +207,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
     
     if exibicao_alocacao == "Hierárquica Integrada (Sunburst)":
         st.subheader("Visão Hierárquica da Carteira (Classe > Setor > Ativo)")
-        df_sunburst = df_holdings.copy()
+        df_sunburst = df_holdings_filtered.copy()
         df_sunburst["setor_economico"] = df_sunburst["setor_economico"].fillna("Outros").replace("", "Outros")
         df_sunburst["ticker"] = df_sunburst["ticker"].fillna("Outros").replace("", "Outros")
         
@@ -204,7 +236,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         with col_g1:
             st.subheader("Distribuição por Classe de Ativos")
             fig_pie_type = px.pie(
-                df_holdings,
+                df_holdings_filtered,
                 names="tipo",
                 values="valor_atual",
                 hole=0.45,
@@ -216,6 +248,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
                 hovertemplate="<b>Classe:</b> %{label}<br><b>Valor:</b> R$ %{value:,.2f}<br><b>Proporção:</b> %{percent}<extra></extra>"
             )
             fig_pie_type.update_layout(
+
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 font_color="#ffffff",
@@ -227,10 +260,10 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
             
         with col_g2:
             st.subheader("Distribuição por Setor Econômico")
-            if "setor_economico" in df_holdings.columns:
-                df_holdings["setor_economico"] = df_holdings["setor_economico"].fillna("Outros").replace("", "Outros")
+            if "setor_economico" in df_holdings_filtered.columns:
+                df_holdings_filtered["setor_economico"] = df_holdings_filtered["setor_economico"].fillna("Outros").replace("", "Outros")
                 fig_pie_sector = px.pie(
-                    df_holdings,
+                    df_holdings_filtered,
                     names="setor_economico",
                     values="valor_atual",
                     hole=0.45,
@@ -256,7 +289,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         with col_g3:
             st.subheader("Distribuição por Ativo Específico")
             fig_pie_asset = px.pie(
-                df_holdings,
+                df_holdings_filtered,
                 names="ticker",
                 values="valor_atual",
                 hole=0.45,
@@ -276,6 +309,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
                 separators=",."
             )
             st.plotly_chart(fig_pie_asset, width='stretch')
+
 
     # Gráfico Orçamentário e Proventos
     st.markdown("### 💵 Fluxo de Caixa e Proventos Passivos")

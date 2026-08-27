@@ -19,20 +19,22 @@ body,
   font-family: 'Outfit', sans-serif !important;
 }
 
-/* Transparência e ajuste do Header padrão do Streamlit */
-header[data-testid='stHeader'],
-[data-testid='stHeader'] {
-  background: transparent !important;
-  height: 3.5rem !important;
-  z-index: 10 !important;
-}
-
-/* Container Principal */
+/* Reduz drasticamente o padding superior e ancora o posicionamento absoluto */
 .block-container,
 div[data-testid='stMainBlockContainer'] {
   padding-top: 1.5rem !important;
-  padding-bottom: 2rem !important;
-  max-width: 96% !important;
+  padding-bottom: 1rem !important;
+  position: relative !important;
+}
+
+/* Header nativo do Streamlit */
+header[data-testid='stHeader'] {
+  background: transparent !important;
+  pointer-events: none !important;
+}
+
+header[data-testid='stHeader'] * {
+  pointer-events: auto !important;
 }
 
 /* Header estilizado e divisor */
@@ -140,6 +142,33 @@ div[data-testid='stPopoverBody'] button[kind='primary'] {
   color: #ffffff !important;
   font-weight: 700 !important;
   box-shadow: 0 4px 14px rgba(255, 75, 75, 0.35) !important;
+}
+
+/* Empurra o contêiner nativo dos 3 pontinhos e toolbar do Streamlit 7.5rem para a esquerda */
+header[data-testid='stHeader'] div:has(> [data-testid='stMainMenu']),
+header[data-testid='stHeader'] div:has(> [data-testid='stStatusWidget']),
+header[data-testid='stHeader'] .e1yxiy6j6,
+header[data-testid='stHeader'] > div:first-child > div:last-child {
+  transform: translateX(-2.8rem) !important;
+}
+
+/* Posiciona o botão Popover de navegação no EXTREMO canto direito (à direita dos 3 pontinhos) */
+div[data-testid='stMainBlockContainer']
+  > div:first-child
+  > div[data-testid='stPopover'],
+.main div[data-testid='stPopover'],
+div[data-testid='stPopover'] {
+  position: fixed !important;
+  top: 0.5rem !important;
+  right: 0.75rem !important;
+  width: auto !important;
+  z-index: 999999 !important;
+  pointer-events: auto !important;
+}
+
+button[data-testid='stExpandSidebarButton'] {
+  left: 30px;
+  position: relative;
 }
 
 /* Cards de Métricas Premium */

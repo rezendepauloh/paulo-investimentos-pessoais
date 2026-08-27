@@ -19,10 +19,17 @@ def normalize_text(text: str) -> str:
     text_str = re.sub(r"\s+", " ", text_str).strip()
     return text_str
 
-def format_number(val, is_currency=False, currency="BRL", decimals=2):
+def format_number(val, is_currency=False, currency="BRL", decimals=2, mask_privacy=False):
     """
-    Formata valores numéricos para o padrão PT-BR com separadores corretos e suporte a moedas.
+    Formata valores numéricos para o padrão PT-BR com separadores corretos, suporte a moedas
+    e modo privacidade opcional.
     """
+    if mask_privacy:
+        if is_currency:
+            prefix = "US$" if currency == "USD" else "R$"
+            return f"{prefix} ••••••"
+        return "••••••"
+
     if pd.isna(val) or val is None:
         return ""
     try:
@@ -39,5 +46,5 @@ def format_number(val, is_currency=False, currency="BRL", decimals=2):
             return f"R$ {formatted}"
             
         return formatted
-    except Exception:
+    except (ValueError, TypeError):
         return str(val)

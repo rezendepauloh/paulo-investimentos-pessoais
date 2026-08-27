@@ -178,8 +178,10 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
     if st.query_params.get("subtab") != selected_slug:
         st.query_params["subtab"] = selected_slug
         logger.info(f"Sub-navegação Importação: {selected_slug}")
+        st.rerun()
     
     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+
 
     # ==========================================
     # ABA 1: COMPROVANTES E PRINTS (GEMINI VISION)

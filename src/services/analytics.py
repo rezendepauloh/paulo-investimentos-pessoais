@@ -44,9 +44,11 @@ def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
             # Caso os primeiros dias sejam NaN por falta de dados de feriado/fim de semana
             df["fator_acumulado"] = df["fator_acumulado"].ffill().bfill().fillna(1.0)
             
+            st.session_state["bcb_cdi_status"] = "OK"
             return df["fator_acumulado"]
     except Exception as e:
         logger.warning(f"Não foi possível obter os dados do CDI da API do Banco Central: {e}")
+        st.session_state["bcb_cdi_status"] = f"TIMEOUT: {e}"
         
     # Fallback aproximado (11% ao ano constante de CDI caso a API falhe)
     dates = pd.date_range(start=start_date, end=end_date)
@@ -84,15 +86,31 @@ def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
             df = df.reindex(pd.date_range(start=start_date, end=end_date), method="ffill")
             df["fator_acumulado"] = df["fator_acumulado"].ffill().bfill().fillna(1.0)
             
+            st.session_state["bcb_ipca_status"] = "OK"
             return df["fator_acumulado"]
     except Exception as e:
         logger.warning(f"Não foi possível obter os dados do IPCA da API do Banco Central: {e}")
+        st.session_state["bcb_ipca_status"] = f"TIMEOUT: {e}"
         
     # Fallback aproximado (4.5% ao ano constante de IPCA caso a API falhe)
     dates = pd.date_range(start=start_date, end=end_date)
     daily_rate = (1.045) ** (1/365) - 1.0
     fator = (1.0 + daily_rate) ** np.arange(1, len(dates) + 1)
     return pd.Series(fator, index=dates)
+
+def clear_bcb_cache():
+    """
+    Limpa os caches de dados macroeconômicos do Banco Central e histórico de performance.
+    """
+    get_historical_cdi.clear()
+    get_historical_ipca.clear()
+    get_historical_performance.clear()
+    if "bcb_cdi_status" in st.session_state:
+        del st.session_state["bcb_cdi_status"]
+    if "bcb_ipca_status" in st.session_state:
+        del st.session_state["bcb_ipca_status"]
+    logger.info("Cache de CDI, IPCA e Performance limpos para re-tentativa.")
+
 
 def is_valid_yfinance_ticker(ticker: str, asset_type: str = None) -> bool:
     """

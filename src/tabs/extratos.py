@@ -54,11 +54,14 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
     if st.query_params.get("subtab") != selected_slug:
         st.query_params["subtab"] = selected_slug
         logger.info(f"Sub-navegação Extratos: {selected_slug}")
+        st.rerun()
     
     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
-    
-    if selected_slug == "receitas":
 
+    
+    modo_privacidade = st.session_state.get("ext_modo_privacidade", False)
+
+    if selected_slug == "receitas":
         st.markdown("### 🪙 Receitas")
         
         # Filtra para exibir apenas receitas puras (não-patrimoniais)
@@ -72,28 +75,17 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
         if df_receitas_puras.empty:
             st.info("Nenhuma receita não-patrimonial cadastrada.")
         else:
-            col_r1, col_r2, col_r3 = st.columns(3)
-            with col_r1:
-                nomes_receitas = ["Todos"] + sorted(df_receitas_puras["Nome"].dropna().unique().tolist())
-                nome_receita_sel = st.selectbox("Filtrar por Descrição:", nomes_receitas, key="filter_rec_nome")
-            with col_r2:
-                categorias_receitas = ["Todas"] + sorted(df_receitas_puras["Categoria"].dropna().unique().tolist())
-                cat_receita_sel = st.selectbox("Filtrar por Categoria (Receitas):", categorias_receitas, key="filter_rec_cat")
-            with col_r3:
-                df_temp = df_receitas_puras.copy()
-                df_temp["Recebido em_dt"] = pd.to_datetime(df_temp["Recebido em"], errors='coerce')
-                df_temp["Mes_Ano"] = df_temp["Recebido em_dt"].dt.strftime("%m/%Y")
-                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
-                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
-                meses_anos = ["Todos"] + unique_months_sorted
-                mes_ano_rec_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_rec_mes_ano")
+            # Lê filtros definidos na sidebar
+            busca_rec = st.session_state.get("ext_rec_busca", "").strip().lower()
+            cat_receita_sel = st.session_state.get("ext_rec_cat", "Todas")
+            mes_ano_rec_sel = st.session_state.get("ext_rec_mes", "Todos")
             
             df_receitas_filtered = df_receitas_puras.copy()
-            if nome_receita_sel != "Todos":
-                df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Nome"] == nome_receita_sel]
-            if cat_receita_sel != "Todas":
+            if busca_rec and "Nome" in df_receitas_filtered.columns:
+                df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Nome"].astype(str).str.lower().str.contains(busca_rec)]
+            if cat_receita_sel != "Todas" and "Categoria" in df_receitas_filtered.columns:
                 df_receitas_filtered = df_receitas_filtered[df_receitas_filtered["Categoria"] == cat_receita_sel]
-            if mes_ano_rec_sel != "Todos":
+            if mes_ano_rec_sel != "Todos" and "Recebido em" in df_receitas_filtered.columns:
                 df_receitas_filtered = df_receitas_filtered[pd.to_datetime(df_receitas_filtered["Recebido em"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_rec_sel]
                 
             df_receitas_display = df_receitas_filtered.copy()
@@ -112,60 +104,57 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
                     return f"Faltam {diff} dias"
                     
             df_receitas_display["Dias até"] = df_receitas_display["Recebido em"].apply(calc_receitas_dias)
-            st.dataframe(
-                df_receitas_display,
-                column_config={
-                    "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
-                    "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
-                },
-                width='stretch'
-            )
+
+            if modo_privacidade and "Valor" in df_receitas_display.columns:
+                df_receitas_display["Valor"] = "R$ ••••••"
+                st.dataframe(
+                    df_receitas_display,
+                    column_config={
+                        "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
+                    },
+                    width='stretch'
+                )
+            else:
+                st.dataframe(
+                    df_receitas_display,
+                    column_config={
+                        "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
+                        "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
+                    },
+                    width='stretch'
+                )
             
-            total_rec_soma = df_receitas_filtered["Valor"].sum()
-            total_rec_formatted = format_number(total_rec_soma, is_currency=True, currency="BRL")
+            total_rec_soma = df_receitas_filtered["Valor"].sum() if "Valor" in df_receitas_filtered.columns else 0.0
+            total_rec_formatted = format_number(total_rec_soma, is_currency=True, currency="BRL", mask_privacy=modo_privacidade)
             st.markdown(f"""
             <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Receitas (Filtro)</span>
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Receitas ({len(df_receitas_filtered)} lançamentos)</span>
                 <span style="font-weight: 700; color: #00E676; font-size: 20px;">{total_rec_formatted}</span>
             </div>
             """, unsafe_allow_html=True)
             
     elif selected_slug == "despesas":
-        st.markdown("### 🪙 Despesas")
+        st.markdown("### 💸 Despesas")
         if df_despesas.empty:
             st.info("Nenhuma despesa cadastrada.")
         else:
-            col_filter1, col_filter2, col_filter3, col_filter4 = st.columns(4)
-            with col_filter1:
-                categorias_despesas = ["Todas"] + sorted(df_despesas["Categoria"].dropna().unique().tolist())
-                cat_despesa_sel = st.selectbox("Filtrar por Categoria (Despesas):", categorias_despesas, key="filter_des_cat")
-            with col_filter2:
-                fixo_opcoes = ["Todos"]
-                if "Fixo vs. Variável" in df_despesas.columns:
-                    fixo_opcoes += sorted(df_despesas["Fixo vs. Variável"].dropna().unique().tolist())
-                fixo_sel = st.selectbox("Fixo vs. Variável:", fixo_opcoes, key="filter_des_fixo")
-            with col_filter3:
-                essencial_opcoes = ["Todos"]
-                if "Essencial vs. Não Essencial" in df_despesas.columns:
-                    essencial_opcoes += sorted(df_despesas["Essencial vs. Não Essencial"].dropna().unique().tolist())
-                essencial_sel = st.selectbox("Essencial vs. Não Essencial:", essencial_opcoes, key="filter_des_essencial")
-            with col_filter4:
-                df_temp = df_despesas.copy()
-                df_temp["Gasto em_dt"] = pd.to_datetime(df_temp["Gasto em"], errors='coerce')
-                df_temp["Mes_Ano"] = df_temp["Gasto em_dt"].dt.strftime("%m/%Y")
-                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
-                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
-                meses_anos = ["Todos"] + unique_months_sorted
-                mes_ano_desp_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_des_mes_ano")
+            # Lê filtros definidos na sidebar
+            busca_desp = st.session_state.get("ext_desp_busca", "").strip().lower()
+            cat_despesa_sel = st.session_state.get("ext_desp_cat", "Todas")
+            fixo_sel = st.session_state.get("ext_desp_fixo", "Todos")
+            essencial_sel = st.session_state.get("ext_desp_ess", "Todos")
+            mes_ano_desp_sel = st.session_state.get("ext_desp_mes", "Todos")
             
             df_despesas_filtered = df_despesas.copy()
-            if cat_despesa_sel != "Todas":
+            if busca_desp and "Nome" in df_despesas_filtered.columns:
+                df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Nome"].astype(str).str.lower().str.contains(busca_desp)]
+            if cat_despesa_sel != "Todas" and "Categoria" in df_despesas_filtered.columns:
                 df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Categoria"] == cat_despesa_sel]
             if "Fixo vs. Variável" in df_despesas_filtered.columns and fixo_sel != "Todos":
                 df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Fixo vs. Variável"] == fixo_sel]
             if "Essencial vs. Não Essencial" in df_despesas_filtered.columns and essencial_sel != "Todos":
                 df_despesas_filtered = df_despesas_filtered[df_despesas_filtered["Essencial vs. Não Essencial"] == essencial_sel]
-            if mes_ano_desp_sel != "Todos":
+            if mes_ano_desp_sel != "Todos" and "Gasto em" in df_despesas_filtered.columns:
                 df_despesas_filtered = df_despesas_filtered[pd.to_datetime(df_despesas_filtered["Gasto em"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_desp_sel]
                 
             df_despesas_display = df_despesas_filtered.copy()
@@ -184,26 +173,37 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
                     return f"Faltam {diff} dias"
                     
             df_despesas_display["Dias até"] = df_despesas_display["Gasto em"].apply(calc_despesas_dias)
-            st.dataframe(
-                df_despesas_display,
-                column_config={
-                    "Gasto em": st.column_config.DateColumn("Gasto Em", format="DD/MM/YYYY"),
-                    "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
-                },
-                width='stretch'
-            )
+
+            if modo_privacidade and "Valor" in df_despesas_display.columns:
+                df_despesas_display["Valor"] = "R$ ••••••"
+                st.dataframe(
+                    df_despesas_display,
+                    column_config={
+                        "Gasto em": st.column_config.DateColumn("Gasto Em", format="DD/MM/YYYY"),
+                    },
+                    width='stretch'
+                )
+            else:
+                st.dataframe(
+                    df_despesas_display,
+                    column_config={
+                        "Gasto em": st.column_config.DateColumn("Gasto Em", format="DD/MM/YYYY"),
+                        "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
+                    },
+                    width='stretch'
+                )
             
-            total_des_soma = df_despesas_filtered["Valor"].sum()
-            total_des_formatted = format_number(total_des_soma, is_currency=True, currency="BRL")
+            total_des_soma = df_despesas_filtered["Valor"].sum() if "Valor" in df_despesas_filtered.columns else 0.0
+            total_des_formatted = format_number(total_des_soma, is_currency=True, currency="BRL", mask_privacy=modo_privacidade)
             st.markdown(f"""
             <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Despesas (Filtro)</span>
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Despesas ({len(df_despesas_filtered)} lançamentos)</span>
                 <span style="font-weight: 700; color: #FF5252; font-size: 20px;">{total_des_formatted}</span>
             </div>
             """, unsafe_allow_html=True)
             
     elif selected_slug == "dividendos":
-        st.markdown("### 🪙 Dividendos recebidos")
+        st.markdown("### 📈 Dividendos Recebidos")
         
         # Isola os proventos a partir de df_receitas ou do df_dividendos derivado
         df_divs_base = pd.DataFrame()
@@ -215,29 +215,17 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
         if df_divs_base.empty:
             st.info("Nenhum dividendo ou provento passivo lançado.")
         else:
-            col_d1, col_d2, col_d3 = st.columns(3)
-            with col_d1:
-                col_ativo_nome = "Ativo" if "Ativo" in df_divs_base.columns else "Nome"
-                ativos_dividendos = ["Todos"] + sorted(df_divs_base[col_ativo_nome].dropna().unique().tolist())
-                ativo_div_sel = st.selectbox("Filtrar por Ativo / Descrição:", ativos_dividendos, key="filter_div_ativo")
-            with col_d2:
-                categorias_dividendos = ["Todas"] + sorted(df_divs_base["Categoria"].dropna().unique().tolist())
-                cat_div_sel = st.selectbox("Filtrar por Categoria (Dividendos):", categorias_dividendos, key="filter_div_cat")
-            with col_d3:
-                df_temp = df_divs_base.copy()
-                df_temp["Recebido em_dt"] = pd.to_datetime(df_temp["Recebido em"], errors='coerce')
-                df_temp["Mes_Ano"] = df_temp["Recebido em_dt"].dt.strftime("%m/%Y")
-                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
-                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
-                meses_anos = ["Todos"] + unique_months_sorted
-                mes_ano_div_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_div_mes_ano")
+            col_ativo_nome = "Ativo" if "Ativo" in df_divs_base.columns else "Nome"
+            ativo_div_sel = st.session_state.get("ext_div_ativo", "Todos")
+            cat_div_sel = st.session_state.get("ext_div_cat", "Todas")
+            mes_ano_div_sel = st.session_state.get("ext_div_mes", "Todos")
             
             df_dividendos_filtered = df_divs_base.copy()
-            if ativo_div_sel != "Todos":
+            if ativo_div_sel != "Todos" and col_ativo_nome in df_dividendos_filtered.columns:
                 df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered[col_ativo_nome] == ativo_div_sel]
-            if cat_div_sel != "Todas":
+            if cat_div_sel != "Todas" and "Categoria" in df_dividendos_filtered.columns:
                 df_dividendos_filtered = df_dividendos_filtered[df_dividendos_filtered["Categoria"] == cat_div_sel]
-            if mes_ano_div_sel != "Todos":
+            if mes_ano_div_sel != "Todos" and "Recebido em" in df_dividendos_filtered.columns:
                 df_dividendos_filtered = df_dividendos_filtered[pd.to_datetime(df_dividendos_filtered["Recebido em"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_div_sel]
                 
             df_dividendos_display = df_dividendos_filtered.copy()
@@ -256,83 +244,89 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
                     return f"Faltam {diff} dias"
                     
             df_dividendos_display["Dias até"] = df_dividendos_display["Recebido em"].apply(calc_dividendos_dias)
-            st.dataframe(
-                df_dividendos_display,
-                column_config={
-                    "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
-                    "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
-                },
-                width='stretch'
-            )
+
+            if modo_privacidade and "Valor" in df_dividendos_display.columns:
+                df_dividendos_display["Valor"] = "R$ ••••••"
+                st.dataframe(
+                    df_dividendos_display,
+                    column_config={
+                        "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
+                    },
+                    width='stretch'
+                )
+            else:
+                st.dataframe(
+                    df_dividendos_display,
+                    column_config={
+                        "Recebido em": st.column_config.DateColumn("Recebido Em", format="DD/MM/YYYY"),
+                        "Valor": st.column_config.NumberColumn("Valor", format="R$ %.2f"),
+                    },
+                    width='stretch'
+                )
             
-            total_div_soma = df_dividendos_filtered["Valor"].sum()
-            total_div_formatted = format_number(total_div_soma, is_currency=True, currency="BRL")
+            total_div_soma = df_dividendos_filtered["Valor"].sum() if "Valor" in df_dividendos_filtered.columns else 0.0
+            total_div_formatted = format_number(total_div_soma, is_currency=True, currency="BRL", mask_privacy=modo_privacidade)
             st.markdown(f"""
             <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Dividendos (Filtro)</span>
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total de Dividendos ({len(df_dividendos_filtered)} pagamentos)</span>
                 <span style="font-weight: 700; color: #FFC107; font-size: 20px;">{total_div_formatted}</span>
             </div>
             """, unsafe_allow_html=True)
             
     elif selected_slug == "ordens":
-        st.markdown("### 🪙 Histórico de Ordens de Compra e Venda")
+        st.markdown("### 📊 Histórico de Ordens de Compra e Venda")
         if df_orders.empty:
             st.info("Nenhuma ordem cadastrada.")
         else:
-            col_o1, col_o2, col_o3, col_o4, col_o5 = st.columns(5)
-            with col_o1:
-                ativos_unicos = ["Todos"] + sorted(df_orders["Papel"].dropna().unique().tolist())
-                ativo_selecionado = st.selectbox("Filtrar por Ativo:", ativos_unicos, key="filter_orders_ativo")
-            with col_o2:
-                acoes_unicas = ["Todos"] + sorted(df_orders["Compra/Venda"].dropna().unique().tolist())
-                acao_selecionada = st.selectbox("Compra/Venda:", acoes_unicas, key="filter_orders_acao")
-            with col_o3:
-                tipos_unicos = ["Todos"] + sorted(df_orders["Tipo"].dropna().unique().tolist())
-                tipo_selecionado = st.selectbox("Tipo:", tipos_unicos, key="filter_orders_tipo")
-            with col_o4:
-                setores_unicos = ["Todos"]
-                if "Setor Econômico" in df_orders.columns:
-                    setores_unicos += sorted(df_orders["Setor Econômico"].dropna().unique().tolist())
-                setor_selecionado = st.selectbox("Setor Econômico:", setores_unicos, key="filter_orders_setor")
-            with col_o5:
-                df_temp = df_orders.copy()
-                df_temp["data envio_dt"] = pd.to_datetime(df_temp["data envio"], errors='coerce')
-                df_temp["Mes_Ano"] = df_temp["data envio_dt"].dt.strftime("%m/%Y")
-                unique_months = df_temp["Mes_Ano"].dropna().unique().tolist()
-                unique_months_sorted = sorted(unique_months, key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
-                meses_anos = ["Todos"] + unique_months_sorted
-                mes_ano_ord_sel = st.selectbox("Filtrar por Mês/Ano:", meses_anos, key="filter_orders_mes_ano")
+            ativo_selecionado = st.session_state.get("ext_ord_ativo", "Todos")
+            acao_selecionada = st.session_state.get("ext_ord_acao", "Todos")
+            tipo_selecionado = st.session_state.get("ext_ord_tipo", "Todos")
+            setor_selecionado = st.session_state.get("ext_ord_setor", "Todos")
+            mes_ano_ord_sel = st.session_state.get("ext_ord_mes", "Todos")
             
             df_orders_filtered = df_orders.copy()
-            if ativo_selecionado != "Todos":
+            if ativo_selecionado != "Todos" and "Papel" in df_orders_filtered.columns:
                 df_orders_filtered = df_orders_filtered[df_orders_filtered["Papel"] == ativo_selecionado]
-            if acao_selecionada != "Todos":
+            if acao_selecionada != "Todos" and "Compra/Venda" in df_orders_filtered.columns:
                 df_orders_filtered = df_orders_filtered[df_orders_filtered["Compra/Venda"] == acao_selecionada]
-            if tipo_selecionado != "Todos":
+            if tipo_selecionado != "Todos" and "Tipo" in df_orders_filtered.columns:
                 df_orders_filtered = df_orders_filtered[df_orders_filtered["Tipo"] == tipo_selecionado]
             if "Setor Econômico" in df_orders_filtered.columns and setor_selecionado != "Todos":
                 df_orders_filtered = df_orders_filtered[df_orders_filtered["Setor Econômico"] == setor_selecionado]
-            if mes_ano_ord_sel != "Todos":
+            if mes_ano_ord_sel != "Todos" and "data envio" in df_orders_filtered.columns:
                 df_orders_filtered = df_orders_filtered[pd.to_datetime(df_orders_filtered["data envio"], errors='coerce').dt.strftime("%m/%Y") == mes_ano_ord_sel]
                 
             df_orders_display = df_orders_filtered.sort_values("data envio", ascending=False).copy()
-            moedas_filtradas = df_orders_filtered["Moeda"].unique()
+            moedas_filtradas = df_orders_filtered["Moeda"].unique() if "Moeda" in df_orders_filtered.columns else ["BRL"]
             prefixo_moeda = "R$" if (len(moedas_filtradas) == 1 and moedas_filtradas[0] == "BRL") else ("$" if (len(moedas_filtradas) == 1 and moedas_filtradas[0] == "USD") else "")
             format_str = f"{prefixo_moeda} %.2f" if prefixo_moeda else "%.2f"
             
-            st.dataframe(
-                df_orders_display,
-                column_config={
-                    "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
-                    "Total líquido": st.column_config.NumberColumn("Total líquido", format=format_str),
-                    "Preço médio + corretagem": st.column_config.NumberColumn("Preço médio + corretagem", format=format_str),
-                    "Preço médio": st.column_config.NumberColumn("Preço médio", format=format_str),
-                    "Total": st.column_config.NumberColumn("Total", format=format_str),
-                    "Corretagem": st.column_config.NumberColumn("Corretagem", format=format_str),
-                    "Qtd Executada": st.column_config.NumberColumn("Qtd Executada", format="%.4f"),
-                },
-                width='stretch'
-            )
+            if modo_privacidade:
+                for col_m in ["Total líquido", "Preço médio + corretagem", "Preço médio", "Total", "Corretagem"]:
+                    if col_m in df_orders_display.columns:
+                        df_orders_display[col_m] = "••••••"
+                st.dataframe(
+                    df_orders_display,
+                    column_config={
+                        "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
+                        "Qtd Executada": st.column_config.NumberColumn("Qtd Executada", format="%.4f"),
+                    },
+                    width='stretch'
+                )
+            else:
+                st.dataframe(
+                    df_orders_display,
+                    column_config={
+                        "data envio": st.column_config.DatetimeColumn("Data Envio", format="DD/MM/YYYY HH:mm"),
+                        "Total líquido": st.column_config.NumberColumn("Total líquido", format=format_str),
+                        "Preço médio + corretagem": st.column_config.NumberColumn("Preço médio + corretagem", format=format_str),
+                        "Preço médio": st.column_config.NumberColumn("Preço médio", format=format_str),
+                        "Total": st.column_config.NumberColumn("Total", format=format_str),
+                        "Corretagem": st.column_config.NumberColumn("Corretagem", format=format_str),
+                        "Qtd Executada": st.column_config.NumberColumn("Qtd Executada", format="%.4f"),
+                    },
+                    width='stretch'
+                )
             
             def calc_net_order_value(row):
                 action = str(row.get("Compra/Venda", "")).strip().upper()
@@ -341,9 +335,9 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
                     return -val
                 return val
                 
-            net_values = df_orders_filtered.apply(calc_net_order_value, axis=1)
+            net_values = df_orders_filtered.apply(calc_net_order_value, axis=1) if not df_orders_filtered.empty else pd.Series(dtype=float)
             
-            moedas_filtradas = df_orders_filtered["Moeda"].unique()
+            moedas_filtradas = df_orders_filtered["Moeda"].unique() if "Moeda" in df_orders_filtered.columns else ["BRL"]
             if len(moedas_filtradas) == 1:
                 moeda_display = moedas_filtradas[0]
                 total_soma_ordens = net_values.sum()
@@ -351,10 +345,11 @@ def render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders):
                 total_soma_ordens = net_values.sum()
                 moeda_display = "BRL"
                 
-            total_soma_formatted = format_number(total_soma_ordens, is_currency=True, currency=moeda_display)
+            total_soma_formatted = format_number(total_soma_ordens, is_currency=True, currency=moeda_display, mask_privacy=modo_privacidade)
             st.markdown(f"""
             <div style="background-color: var(--secondary-background-color); border: 1px solid rgba(128, 128, 128, 0.2); padding: 12px 20px; border-radius: 12px; margin-top: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total Líquido (Filtro Ativo)</span>
+                <span style="font-weight: 600; color: #88888b; font-size: 14px; text-transform: uppercase;">Total Líquido ({len(df_orders_filtered)} ordens)</span>
                 <span style="font-weight: 700; color: #2979FF; font-size: 20px;">{total_soma_formatted}</span>
             </div>
             """, unsafe_allow_html=True)
+

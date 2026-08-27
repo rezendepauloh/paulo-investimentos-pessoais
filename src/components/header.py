@@ -10,7 +10,8 @@ PAGES_CONFIG = [
     {"id": "extratos", "label": "📑 Extratos e Lançamentos"},
     {"id": "fundamentalista", "label": "🔍 Análise Fundamentalista"},
     {"id": "consultoria_ia", "label": "🤖 Consultoria de Alocação com IA"},
-    {"id": "importar_gastos", "label": "📥 Importação de Dados para GSheets"}
+    {"id": "importar_gastos", "label": "📥 Importação de Dados para GSheets"},
+    {"id": "configuracoes", "label": "⚙️ Configurações do Sistema"}
 ]
 
 PAGE_TO_SLUG = {
@@ -19,14 +20,46 @@ PAGE_TO_SLUG = {
     "extratos": "extratos",
     "fundamentalista": "fundamentalista",
     "consultoria_ia": "consultoria_ia",
-    "importar_gastos": "importar_gastos"
+    "importar_gastos": "importar_gastos",
+    "configuracoes": "configuracoes"
+}
+
+PAGE_HEADER_INFO = {
+    "visao_geral": {
+        "title": "📊 Visão Geral do Patrimônio & Orçamento",
+        "subtitle": "Consolidação automática de investimentos, patrimônio líquido, distribuição de ativos e fluxo de caixa mensal."
+    },
+    "desempenho": {
+        "title": "📈 Desempenho Histórico & Benchmarks",
+        "subtitle": "Evolução da rentabilidade ponderada no tempo (TWR) e comparação com CDI, IPCA, Ibovespa e S&P 500."
+    },
+    "extratos": {
+        "title": "📑 Extratos Detalhados & Histórico de Ordens",
+        "subtitle": "Consulta granular e filtragem avançada de receitas, despesas, dividendos e operações de compra e venda."
+    },
+    "fundamentalista": {
+        "title": "🔍 Análise Fundamentalista & Demonstrativos",
+        "subtitle": "Consulta histórica de Balanço Patrimonial, DRE e Fluxo de Caixa para ações e análise de proventos para FIIs."
+    },
+    "consultoria_ia": {
+        "title": "🤖 Consultoria Estratégica com Inteligência Artificial",
+        "subtitle": "Diagnóstico inteligente de risco, diversificação de carteira e sugestões de rebalanceamento por IA."
+    },
+    "importar_gastos": {
+        "title": "📥 Ingestão Inteligente & Conciliação de Gastos",
+        "subtitle": "Importação híbrida de comprovantes/faturas (OCR Gemini Vision), extratos (.OFX / .CSV) e Open Finance."
+    },
+    "configuracoes": {
+        "title": "⚙️ Configurações do Sistema & Conexões",
+        "subtitle": "Gerenciamento de credenciais, fontes de dados, sincronizações de planilhas e diagnósticos da aplicação."
+    }
 }
 
 SLUG_TO_PAGE = {v: k for k, v in PAGE_TO_SLUG.items()}
 
 def render_header():
     """
-    Renderiza o cabeçalho superior com título e menu popover estilo drawer suspenso.
+    Renderiza o cabeçalho superior com título dinâmico e menu popover estilo drawer suspenso.
     Sincroniza o estado da página ativa com os Query Parameters da URL (?tab=slug).
     Retorna o ID da página atualmente selecionada.
     """
@@ -51,15 +84,18 @@ def render_header():
         logger.info(f"Navegação: Usuário acessou a página '{page_id}'")
         st.rerun()
 
+    header_info = PAGE_HEADER_INFO.get(st.session_state.current_page, PAGE_HEADER_INFO["visao_geral"])
+
     header_col1, header_col2 = st.columns([8.2, 1.8], vertical_alignment="center")
 
     with header_col1:
-        st.markdown("""
+        st.markdown(f"""
         <div class="dashboard-header-left">
-            <h1 class="dashboard-title">📈 Gestão Patrimonial Inteligente</h1>
-            <p class="dashboard-subtitle">Consolidação automática de investimentos, fluxo de caixa e consultoria personalizada por IA.</p>
+            <h1 class="dashboard-title">{header_info['title']}</h1>
+            <p class="dashboard-subtitle">{header_info['subtitle']}</p>
         </div>
         """, unsafe_allow_html=True)
+
 
     with header_col2:
         with st.popover("☰ Menu", use_container_width=True):

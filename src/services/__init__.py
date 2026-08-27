@@ -17,9 +17,11 @@ from .analytics import (
     get_usd_brl_rate,
     get_historical_cdi,
     get_historical_ipca,
+    clear_bcb_cache,
     normalize_ticker,
     is_valid_yfinance_ticker,
 )
+
 from .ai_allocator import generate_allocation_tips
 from .deduplication import generate_transaction_hash, identify_duplicates
 from .ingestion_parser import parse_ofx, parse_csv, parse_receipt_image

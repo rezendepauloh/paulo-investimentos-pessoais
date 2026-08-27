@@ -16,14 +16,9 @@ def render_tab_desempenho(df_perf):
         st.info("Sem ordens no histórico para calcular performance.")
         return
 
-    # Seletor de período do gráfico
-    col_sel1, _ = st.columns([1, 4])
-    with col_sel1:
-        days_option = st.selectbox(
-            "Período de Análise:",
-            options=["Desde o início", "Últimos 12 meses", "Últimos 6 meses", "Último mês"],
-            index=0
-        )
+    # Lê os filtros da sidebar
+    days_option = st.session_state.get("perf_periodo", "Desde o início")
+    benchmarks_ativos = st.session_state.get("perf_benchmarks_selecionados", ["CDI", "IPCA (Inflação)", "IPCA + 6%", "Ibovespa", "S&P 500"])
         
     # Filtra o DataFrame histórico de acordo com a opção selecionada
     df_chart = df_perf.copy()
@@ -44,26 +39,29 @@ def render_tab_desempenho(df_perf):
         
     fig_perf = go.Figure()
     
-    # Mapeamento de cores
+    # Mapeamento de cores e labels
     colors_map = {
-        "Retorno Carteira Acumulado (%) Ajustado": {"label": "Sua Carteira", "color": "#00E676", "width": 4},
-        "CDI Acumulado (%) Ajustado": {"label": "CDI", "color": "#FFC107", "width": 2},
-        "IPCA Acumulado (%) Ajustado": {"label": "IPCA (Inflação)", "color": "#FF5252", "width": 2},
-        "IPCA + 6% Acumulado (%) Ajustado": {"label": "IPCA + 6%", "color": "#E91E63", "width": 2},
-        "Ibovespa Acumulado (%) Ajustado": {"label": "Ibovespa", "color": "#00E5FF", "width": 2},
-        "S&P 500 Acumulado (%) Ajustado": {"label": "S&P 500", "color": "#E040FB", "width": 2}
+        "Retorno Carteira Acumulado (%) Ajustado": {"label": "Sua Carteira", "color": "#00E676", "width": 4, "is_carteira": True},
+        "CDI Acumulado (%) Ajustado": {"label": "CDI", "color": "#FFC107", "width": 2, "bench_name": "CDI"},
+        "IPCA Acumulado (%) Ajustado": {"label": "IPCA (Inflação)", "color": "#FF5252", "width": 2, "bench_name": "IPCA (Inflação)"},
+        "IPCA + 6% Acumulado (%) Ajustado": {"label": "IPCA + 6%", "color": "#E91E63", "width": 2, "bench_name": "IPCA + 6%"},
+        "Ibovespa Acumulado (%) Ajustado": {"label": "Ibovespa", "color": "#00E5FF", "width": 2, "bench_name": "Ibovespa"},
+        "S&P 500 Acumulado (%) Ajustado": {"label": "S&P 500", "color": "#E040FB", "width": 2, "bench_name": "S&P 500"}
     }
     
     for col, settings in colors_map.items():
         if col in df_chart.columns:
-            fig_perf.add_trace(go.Scatter(
-                x=df_chart.index,
-                y=df_chart[col],
-                mode='lines',
-                name=settings["label"],
-                line=dict(color=settings["color"], width=settings["width"]),
-                hovertemplate="%{y:.2f}%"
-            ))
+            # Sempre exibe a carteira; benchmarks dependem do multi-select
+            if settings.get("is_carteira", False) or settings.get("bench_name") in benchmarks_ativos:
+                fig_perf.add_trace(go.Scatter(
+                    x=df_chart.index,
+                    y=df_chart[col],
+                    mode='lines',
+                    name=settings["label"],
+                    line=dict(color=settings["color"], width=settings["width"]),
+                    hovertemplate="%{y:.2f}%"
+                ))
+
             
     fig_perf.update_layout(
         hovermode="x unified",
@@ -80,14 +78,17 @@ def render_tab_desempenho(df_perf):
     
     st.plotly_chart(fig_perf, width='stretch')
     
-    # Tabela resumo comparativa
+    # Tabela resumo comparativa (exibe apenas a carteira e os benchmarks selecionados)
     st.markdown("### 📋 Resumo Acumulado no Período Selecionado")
     resumo_dados = []
     for col, settings in colors_map.items():
         if col in df_chart.columns:
-            ultimo_retorno = df_chart[col].iloc[-1]
-            resumo_dados.append({
-                "Benchmark / Portfólio": settings["label"],
-                "Rentabilidade no Período (%)": f"{ultimo_retorno:+.2f}%"
-            })
-    st.table(pd.DataFrame(resumo_dados))
+            if settings.get("is_carteira", False) or settings.get("bench_name") in benchmarks_ativos:
+                ultimo_retorno = df_chart[col].iloc[-1]
+                resumo_dados.append({
+                    "Benchmark / Portfólio": settings["label"],
+                    "Rentabilidade no Período (%)": f"{ultimo_retorno:+.2f}%"
+                })
+    if resumo_dados:
+        st.dataframe(pd.DataFrame(resumo_dados), width='stretch', hide_index=True)
+

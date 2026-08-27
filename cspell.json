@@ -26,6 +26,7 @@
     "codigo",
     "combustivel",
     "condominio",
+    "configuracoes",
     "CONTABEIS",
     "cooldown",
     "correcao",
@@ -42,6 +43,7 @@
     "diaria",
     "diario",
     "disney",
+    "disponiveis",
     "divid",
     "dotenv",
     "dtposted",
@@ -107,6 +109,7 @@
     "pagto",
     "Payables",
     "periodo",
+    "periodos",
     "PETR",
     "pgto",
     "plotly",
@@ -145,9 +148,11 @@
     "STMTTRN",
     "streamlit",
     "Streamlit",
+    "SUBABA",
     "subabas",
     "SUBSCRICAO",
     "subtab",
+    "subtabs",
     "SUBTABS",
     "taxaindex",
     "taxaindexador",
@@ -180,6 +185,7 @@
     "yanchor",
     "yfinance",
     "youtube",
+    "yxiy",
     "zoneinfo"
   ]
 }

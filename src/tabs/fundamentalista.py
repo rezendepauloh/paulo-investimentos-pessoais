@@ -12,9 +12,6 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
     """
     Renderiza a aba de Análise Fundamentalista Histórica (Balanço, DRE, Fluxo de Caixa e FIIs).
     """
-    st.subheader("🔍 Análise Fundamentalista Histórica")
-    st.markdown("Consulte os demonstrativos financeiros históricos (Balanço Patrimonial, DRE e Fluxo de Caixa) das empresas que você possui em carteira.")
-    
     if df_holdings.empty:
         st.info("Nenhum ativo em carteira para realizar a análise fundamentalista.")
         return
@@ -29,30 +26,19 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
         st.info("Nenhum ativo elegível para análise fundamentalista em carteira.")
         return
 
-    col_f1, col_f2 = st.columns([1, 1])
-    with col_f1:
-        ativo_sel = st.selectbox("Escolha um Ativo da sua Carteira:", ativos_elegiveis)
-    with col_f2:
-        periodo_sel = st.radio("Período dos Demonstrativos:", ["Anual", "Trimestral"], horizontal=True)
+    # Lê o ativo e periodicidade selecionados na sidebar
+    ativo_sel = st.session_state.get("fund_ativo_sel", ativos_elegiveis[0])
+    if ativo_sel not in ativos_elegiveis:
+        ativo_sel = ativos_elegiveis[0]
+        
+    periodo_sel = st.session_state.get("fund_periodo_sel", "Anual")
         
     tipo_ativo_sel = df_holdings[df_holdings["ticker"] == ativo_sel]["tipo"].iloc[0]
     moeda_ativo_sel = df_holdings[df_holdings["ticker"] == ativo_sel]["moeda"].iloc[0]
     is_fii = (tipo_ativo_sel == "FIIs" or "FII" in str(ativo_sel).upper())
     
-    col_btn_sync, _ = st.columns([1, 2])
-    with col_btn_sync:
-        if st.button("🔄 Atualizar Dados do Ativo", help="Busca os demonstrativos mais recentes do Yahoo Finance e atualiza o cache no SQLite."):
-            with st.spinner("Atualizando dados..."):
-                success = sync_fundamental_data_from_yfinance(ativo_sel)
-                if success:
-                    st.success("✅ Dados atualizados com sucesso!")
-                    st.rerun()
-                else:
-                    st.error("❌ Falha ao atualizar dados.")
-                    
-    st.markdown("---")
-    
     if is_fii:
+
         st.markdown(f"### 🏢 Análise de FII: **{ativo_sel}**")
         st.info("FIIs (Fundos Imobiliários) não possuem demonstrativos contábeis convencionais (DRE e Balanço) públicos estruturados no padrão corporativo convencional. A análise de FIIs é voltada para a distribuição de proventos e indicadores patrimoniais.")
         
@@ -111,8 +97,10 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
         if st.query_params.get("subtab") != selected_demo_slug:
             st.query_params["subtab"] = selected_demo_slug
             logger.info(f"Sub-navegação Fundamentalista: {selected_demo_slug}")
+            st.rerun()
         
         demo_key = selected_demo_slug
+
         periodo_key = periodo_sel.lower()
 
         

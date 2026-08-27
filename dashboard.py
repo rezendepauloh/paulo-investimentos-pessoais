@@ -36,7 +36,8 @@ from src.tabs import (
     render_tab_extratos,
     render_tab_fundamentalista,
     render_tab_consultoria_ia,
-    render_tab_importar_gastos
+    render_tab_importar_gastos,
+    render_tab_configuracoes
 )
 from src.services import (
     get_budget_data,
@@ -45,14 +46,14 @@ from src.services import (
     get_historical_performance
 )
 
-
 # Renderiza Header e obtém página ativa
 current_page = render_header()
 
-# Renderiza Sidebar
-use_mock, gemini_key, force_refresh = render_sidebar()
-if gemini_key:
-    os.environ["GEMINI_API_KEY"] = gemini_key
+# Inicializa estado de dados mock se ainda não configurado
+if "use_mock" not in st.session_state:
+    st.session_state.use_mock = False
+
+use_mock = st.session_state.use_mock
 
 # Carga de Dados (com fallback inteligente)
 if use_mock:
@@ -84,6 +85,18 @@ if not df_orders.empty:
         df_holdings = calculate_portfolio_holdings(df_orders)
         df_perf = get_historical_performance(df_orders)
 
+# Renderiza Sidebar Contextual da Página Ativa
+render_sidebar(
+    current_page,
+    df_holdings=df_holdings,
+    df_orders=df_orders,
+    df_perf=df_perf,
+    df_receitas=df_receitas,
+    df_despesas=df_despesas,
+    df_dividendos=df_dividendos
+)
+
+
 # Roteamento modular das Abas/Páginas
 if current_page == "visao_geral" or current_page == "📊 Visão Geral e Orçamento":
     render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_dividendos)
@@ -97,3 +110,6 @@ elif current_page == "consultoria_ia" or current_page == "🤖 Consultoria de Al
     render_tab_consultoria_ia(df_holdings, df_receitas, df_despesas, df_dividendos, df_orders)
 elif current_page == "importar_gastos" or current_page == "📥 Importação de Dados para GSheets":
     render_tab_importar_gastos(df_receitas, df_despesas)
+elif current_page == "configuracoes" or current_page == "⚙️ Configurações do Sistema":
+    render_tab_configuracoes()
+
