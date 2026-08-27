@@ -4,6 +4,7 @@ from .extratos import render_tab_extratos
 from .fundamentalista import render_tab_fundamentalista
 from .consultoria_ia import render_tab_consultoria_ia
 from .importar_gastos import render_tab_importar_gastos
+from .editor_planilhas import render_tab_editor_planilhas
 from .configuracoes import render_tab_configuracoes
 
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "render_tab_fundamentalista",
     "render_tab_consultoria_ia",
     "render_tab_importar_gastos",
+    "render_tab_editor_planilhas",
     "render_tab_configuracoes"
 ]
 

@@ -26,6 +26,8 @@ def render_sidebar(current_page: str, df_holdings=None, df_orders=None, df_perf=
             _render_sidebar_consultoria_ia()
         elif current_page == "importar_gastos":
             _render_sidebar_importar_gastos()
+        elif current_page == "editor_planilhas":
+            _render_sidebar_editor_planilhas()
         elif current_page == "configuracoes":
             _render_sidebar_configuracoes()
         else:
@@ -464,6 +466,222 @@ def _render_sidebar_importar_gastos():
     st.markdown("---")
     st.subheader("📌 Métodos Suportados")
     st.markdown("- 📸 OCR de Prints e Comprovantes (IA)\n- 📄 Extratos Bancários (.OFX / .CSV)\n- 🏦 Open Finance (Pluggy)")
+
+def _render_sidebar_editor_planilhas():
+    st.header("📝 Editor de Planilhas")
+    st.caption("Selecione a planilha e tabela para visualização e edição direta.")
+
+    from src.services.data_loader import get_all_editable_spreadsheets, load_sheet_data
+    spreadsheets_list = get_all_editable_spreadsheets()
+
+    if not spreadsheets_list:
+        st.warning("Nenhuma planilha configurada no `.env`.")
+        return
+
+    spreadsheet_titles = [s["title"] for s in spreadsheets_list]
+    
+    if "editor_selected_sheet" not in st.session_state or st.session_state.editor_selected_sheet not in spreadsheet_titles:
+        st.session_state.editor_selected_sheet = spreadsheet_titles[0]
+
+    def on_sheet_change():
+        selected = st.session_state["sidebar_editor_sheet_select"]
+        st.session_state.editor_selected_sheet = selected
+        new_meta = next((s for s in spreadsheets_list if s["title"] == selected), spreadsheets_list[0])
+        st.session_state.editor_selected_tab = new_meta["tabs"][0]
+        # Limpa filtros ao trocar de planilha
+        st.session_state["editor_filter_categories"] = []
+        st.session_state["editor_filter_accounts"] = []
+        st.session_state["editor_filter_month"] = "Todos"
+        st.session_state["editor_filter_status"] = "Todos"
+
+    current_idx = spreadsheet_titles.index(st.session_state.editor_selected_sheet)
+    st.selectbox(
+        "📁 Escolha a Planilha:",
+        options=spreadsheet_titles,
+        index=current_idx,
+        key="sidebar_editor_sheet_select",
+        on_change=on_sheet_change
+    )
+
+    active_meta = next((s for s in spreadsheets_list if s["title"] == st.session_state.editor_selected_sheet), spreadsheets_list[0])
+    available_tabs = active_meta.get("tabs", ["Despesas"])
+
+    if "editor_selected_tab" not in st.session_state or st.session_state.editor_selected_tab not in available_tabs:
+        st.session_state.editor_selected_tab = available_tabs[0]
+
+    def on_tab_change():
+        st.session_state.editor_selected_tab = st.session_state["sidebar_editor_tab_radio"]
+        # Limpa filtros ao trocar de aba
+        st.session_state["editor_filter_categories"] = []
+        st.session_state["editor_filter_accounts"] = []
+        st.session_state["editor_filter_month"] = "Todos"
+        st.session_state["editor_filter_status"] = "Todos"
+
+    tab_idx = available_tabs.index(st.session_state.editor_selected_tab)
+    st.radio(
+        "📑 Escolha a Aba / Tabela:",
+        options=available_tabs,
+        index=tab_idx,
+        key="sidebar_editor_tab_radio",
+        on_change=on_tab_change
+    )
+
+    st.markdown("---")
+    st.subheader("🔍 Filtros de Visualização")
+
+    # Carrega dados para alimentar as opções dos filtros dinamicamente
+    df_preview = load_sheet_data(active_meta["spreadsheet_id"], st.session_state.editor_selected_tab)
+
+    # 1. Filtro de Texto (Nome / Descrição / Papel)
+    busca_txt = st.text_input(
+        "🔎 Buscar Registro:",
+        value=st.session_state.get("editor_filter_search", ""),
+        placeholder="Ex: Salário, Supermercado, ITUB3...",
+        key="editor_input_search"
+    )
+    st.session_state["editor_filter_search"] = busca_txt
+
+    # 2. Filtro de Categorias
+    categorias_disponiveis = []
+    if not df_preview.empty and "Categoria" in df_preview.columns:
+        categorias_disponiveis = sorted([str(c).strip() for c in df_preview["Categoria"].dropna().unique() if str(c).strip()])
+    
+    if categorias_disponiveis:
+        cat_sel = st.multiselect(
+            "🏷️ Categorias:",
+            options=categorias_disponiveis,
+            default=st.session_state.get("editor_filter_categories", []),
+            key="editor_filter_multiselect_cats"
+        )
+        st.session_state["editor_filter_categories"] = cat_sel
+
+    # 3. Filtro de Contas (Débito / Crédito)
+    contas_disponiveis = []
+    label_conta = "Contas"
+    if not df_preview.empty:
+        if "Conta debitada" in df_preview.columns:
+            label_conta = "Contas Debitadas"
+            contas_disponiveis = sorted([str(c).strip() for c in df_preview["Conta debitada"].dropna().unique() if str(c).strip()])
+        elif "Conta creditada" in df_preview.columns:
+            label_conta = "Contas Creditadas"
+            contas_disponiveis = sorted([str(c).strip() for c in df_preview["Conta creditada"].dropna().unique() if str(c).strip()])
+            
+    if contas_disponiveis:
+        contas_sel = st.multiselect(
+            f"🏦 {label_conta}:",
+            options=contas_disponiveis,
+            default=st.session_state.get("editor_filter_accounts", []),
+            key="editor_filter_multiselect_accounts"
+        )
+        st.session_state["editor_filter_accounts"] = contas_sel
+
+    # 4. Filtro de Mês/Ano (Competência)
+    meses_disponiveis = ["Todos"]
+    date_col = next((c for c in ["Gasto em", "Recebido em", "data envio", "Data"] if not df_preview.empty and c in df_preview.columns), None)
+    if date_col and not df_preview.empty:
+        dts = pd.to_datetime(df_preview[date_col], dayfirst=True, errors="coerce").dropna()
+        if not dts.empty:
+            m_list = sorted(dts.dt.strftime("%m/%Y").unique().tolist(), key=lambda x: pd.to_datetime(x, format="%m/%Y"), reverse=True)
+            meses_disponiveis += m_list
+
+    cur_mes = st.session_state.get("editor_filter_month", "Todos")
+    if cur_mes not in meses_disponiveis:
+        cur_mes = "Todos"
+    mes_sel = st.selectbox(
+        "🗓️ Mês/Ano (Competência):",
+        options=meses_disponiveis,
+        index=meses_disponiveis.index(cur_mes),
+        key="editor_filter_selectbox_month"
+    )
+    st.session_state["editor_filter_month"] = mes_sel
+
+    # 5. Filtro de Status (Dias até)
+    if not df_preview.empty and "Dias até" in df_preview.columns:
+        status_opcoes = ["Todos", "Já creditado / Já debitado", "A vencer (Futuro)", "Hoje", "Vencido / Atrasado"]
+        cur_status = st.session_state.get("editor_filter_status", "Todos")
+        if cur_status not in status_opcoes:
+            cur_status = "Todos"
+        status_sel = st.selectbox(
+            "⏳ Status (Dias até):",
+            options=status_opcoes,
+            index=status_opcoes.index(cur_status),
+            key="editor_filter_selectbox_status"
+        )
+        st.session_state["editor_filter_status"] = status_sel
+
+    # 6. Ordenação da Tabela (Coluna e Direção)
+    st.markdown("---")
+    st.subheader("↕️ Ordenação da Tabela")
+
+    colunas_ordenaveis = [c for c in df_preview.columns if c not in ["_orig_idx"]] if not df_preview.empty else []
+    if colunas_ordenaveis:
+        default_sort = next((c for c in ["Gasto em", "Recebido em", "data envio", "Data", "Valor"] if c in colunas_ordenaveis), colunas_ordenaveis[0])
+        cur_sort = st.session_state.get("editor_sort_column", default_sort)
+        if cur_sort not in colunas_ordenaveis:
+            cur_sort = default_sort
+
+        def on_sort_change():
+            st.session_state.editor_sort_column = st.session_state["editor_sidebar_sort_col"]
+
+        sort_col_sel = st.selectbox(
+            "📌 Ordenar por:",
+            options=colunas_ordenaveis,
+            index=colunas_ordenaveis.index(cur_sort),
+            key="editor_sidebar_sort_col",
+            on_change=on_sort_change
+        )
+        st.session_state["editor_sort_column"] = sort_col_sel
+
+        dir_opcoes = [
+            "🔽 Decrescente (Z-A / Mais recente / Maior)",
+            "🔼 Crescente (A-Z / Mais antigo / Menor)"
+        ]
+        cur_dir = st.session_state.get("editor_sort_direction", dir_opcoes[0])
+        if cur_dir not in dir_opcoes:
+            cur_dir = dir_opcoes[0]
+
+        def on_dir_change():
+            st.session_state.editor_sort_direction = st.session_state["editor_sidebar_sort_dir"]
+            st.session_state.editor_sort_ascending = "Crescente" in st.session_state["editor_sidebar_sort_dir"]
+
+        sort_dir_sel = st.radio(
+            "Ordem:",
+            options=dir_opcoes,
+            index=dir_opcoes.index(cur_dir),
+            key="editor_sidebar_sort_dir",
+            on_change=on_dir_change
+        )
+        st.session_state["editor_sort_direction"] = sort_dir_sel
+        st.session_state["editor_sort_ascending"] = "Crescente" in sort_dir_sel
+
+    # Botão de Limpar Filtros
+    has_active_filters = bool(
+        st.session_state.get("editor_filter_search")
+        or st.session_state.get("editor_filter_categories")
+        or st.session_state.get("editor_filter_accounts")
+        or st.session_state.get("editor_filter_month", "Todos") != "Todos"
+        or st.session_state.get("editor_filter_status", "Todos") != "Todos"
+    )
+
+    if has_active_filters:
+        if st.button("🧹 Limpar Todos os Filtros", use_container_width=True):
+            st.session_state["editor_filter_search"] = ""
+            st.session_state["editor_filter_categories"] = []
+            st.session_state["editor_filter_accounts"] = []
+            st.session_state["editor_filter_month"] = "Todos"
+            st.session_state["editor_filter_status"] = "Todos"
+            st.rerun()
+
+    st.markdown("---")
+    st.markdown(f"**Tipo:** `{active_meta.get('type', 'Geral').capitalize()}`")
+    if active_meta.get("year"):
+        st.markdown(f"**Ano Referência:** `{active_meta.get('year')}`")
+
+    st.link_button("🔗 Abrir no Google Sheets", active_meta.get("url", "#"), use_container_width=True)
+
+    st.markdown("---")
+    last_sync = db_manager.get_last_sync_time()
+    st.info(f"🕒 **Última sincronização:** {last_sync if last_sync else 'Nunca sincronizado'}")
 
 def _render_sidebar_configuracoes():
     st.header("⚙️ Configurações")

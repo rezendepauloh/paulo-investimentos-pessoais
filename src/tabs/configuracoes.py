@@ -134,6 +134,10 @@ def render_tab_configuracoes():
         st.markdown("### 🖥️ Diagnóstico do Sistema")
         db_path = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), "data", "investimentos.db")
         creds_path = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")), "data", "credentials.json")
+        
+        from src.services import get_all_budget_spreadsheets
+        planilhas_orcamento = get_all_budget_spreadsheets()
+        anos_orcamento_str = ", ".join(planilhas_orcamento.keys()) if planilhas_orcamento else "Nenhuma configurada"
 
         diag_data = {
             "Item": [
@@ -142,6 +146,7 @@ def render_tab_configuracoes():
                 "Hora do Servidor",
                 "Banco SQLite Local",
                 "Arquivo de Credenciais Google",
+                "Planilhas Orçamento (.env)",
                 "Porta Streamlit (.env)"
             ],
             "Status / Valor": [
@@ -150,6 +155,7 @@ def render_tab_configuracoes():
                 datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 "✅ Encontrado" if os.path.exists(db_path) else "❌ Não encontrado",
                 "✅ Encontrado" if os.path.exists(creds_path) else "❌ Não encontrado",
+                f"✅ Anos: {anos_orcamento_str}",
                 os.getenv("STREAMLIT_PORT", "8502")
             ]
         }

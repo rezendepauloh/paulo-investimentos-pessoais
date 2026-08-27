@@ -636,8 +636,6 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
                         st.info("Coluna 'Essencial vs. Não Essencial' não preenchida.")
 
     # Histórico Mensal de Receitas, Despesas e Dividendos
-    st.markdown("### 📊 Evolução Mensal de Receitas, Despesas e Dividendos")
-    
     df_rec_m = df_receitas.copy() if not df_receitas.empty else pd.DataFrame()
     df_desp_m = df_despesas.copy() if not df_despesas.empty else pd.DataFrame()
     df_div_m = df_dividendos.copy() if not df_dividendos.empty else pd.DataFrame()
@@ -665,6 +663,36 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
     if monthly_data:
         df_monthly = pd.DataFrame(monthly_data).sort_values("Mês")
         
+        # Extrai os anos existentes nos dados para o seletor
+        df_monthly["Ano"] = df_monthly["Mês"].apply(lambda x: str(x).split("-")[0] if "-" in str(x) else "")
+        anos_disponiveis = sorted([a for a in df_monthly["Ano"].unique() if a], reverse=True)
+        
+        col_title, col_ano = st.columns([7, 3])
+        with col_title:
+            st.markdown("### 📊 Evolução Mensal de Receitas, Despesas e Dividendos")
+        with col_ano:
+            opcoes_ano = ["Todos os Anos"] + anos_disponiveis
+            ano_atual_str = str(pd.Timestamp.now().year)
+            if ano_atual_str in opcoes_ano:
+                default_ano_idx = opcoes_ano.index(ano_atual_str)
+            elif len(anos_disponiveis) > 0:
+                default_ano_idx = opcoes_ano.index(anos_disponiveis[0])
+            else:
+                default_ano_idx = 0
+
+            ano_selecionado = st.selectbox(
+                "📅 Filtrar Ano do Gráfico:",
+                options=opcoes_ano,
+                index=default_ano_idx,
+                key="vg_filtro_ano_grafico_mensal",
+                label_visibility="collapsed"
+            )
+            
+        if ano_selecionado != "Todos os Anos":
+            df_monthly_filtered = df_monthly[df_monthly["Ano"] == ano_selecionado].copy()
+        else:
+            df_monthly_filtered = df_monthly.copy()
+        
         months_pt = {
             "01": "Jan", "02": "Fev", "03": "Mar", "04": "Abr", "05": "Mai", "06": "Jun",
             "07": "Jul", "08": "Ago", "09": "Set", "10": "Out", "11": "Nov", "12": "Dez"
@@ -676,10 +704,10 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
             except Exception:
                 return yr_mo_str
                 
-        df_monthly["Mês Exibição"] = df_monthly["Mês"].apply(format_month_pt)
+        df_monthly_filtered["Mês Exibição"] = df_monthly_filtered["Mês"].apply(format_month_pt)
         
         fig_monthly_bar = px.bar(
-            df_monthly,
+            df_monthly_filtered,
             x="Mês Exibição",
             y="Valor",
             color="Tipo",
@@ -701,4 +729,5 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         )
         st.plotly_chart(fig_monthly_bar, width='stretch')
     else:
+        st.markdown("### 📊 Evolução Mensal de Receitas, Despesas e Dividendos")
         st.info("Sem dados de receitas, despesas ou dividendos para agrupar por mês.")

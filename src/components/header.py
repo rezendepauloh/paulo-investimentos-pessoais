@@ -11,6 +11,7 @@ PAGES_CONFIG = [
     {"id": "fundamentalista", "label": "🔍 Análise Fundamentalista"},
     {"id": "consultoria_ia", "label": "🤖 Consultoria de Alocação com IA"},
     {"id": "importar_gastos", "label": "📥 Importação de Dados para GSheets"},
+    {"id": "editor_planilhas", "label": "📝 Editor de Planilhas"},
     {"id": "configuracoes", "label": "⚙️ Configurações do Sistema"}
 ]
 
@@ -21,6 +22,7 @@ PAGE_TO_SLUG = {
     "fundamentalista": "fundamentalista",
     "consultoria_ia": "consultoria_ia",
     "importar_gastos": "importar_gastos",
+    "editor_planilhas": "editor_planilhas",
     "configuracoes": "configuracoes"
 }
 
@@ -48,6 +50,10 @@ PAGE_HEADER_INFO = {
     "importar_gastos": {
         "title": "📥 Ingestão Inteligente & Conciliação de Gastos",
         "subtitle": "Importação híbrida de comprovantes/faturas (OCR Gemini Vision), extratos (.OFX / .CSV) e Open Finance."
+    },
+    "editor_planilhas": {
+        "title": "📝 Editor de Dados das Planilhas & SQLite",
+        "subtitle": "Gestão direta, edição, inclusão e exclusão de registros com sincronização bidirecional em tempo real."
     },
     "configuracoes": {
         "title": "⚙️ Configurações do Sistema & Conexões",

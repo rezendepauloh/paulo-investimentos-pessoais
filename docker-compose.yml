@@ -7,19 +7,24 @@ services:
     restart: unless-stopped
     ports:
       - "${STREAMLIT_PORT:-8502}:${STREAMLIT_PORT:-8502}"
-
-
-    environment:
-      - TZ=America/Campo_Grande
-      - STREAMLIT_PORT=${STREAMLIT_PORT:-8502}
     env_file:
       - .env
-
-
+    environment:
+      - STREAMLIT_PORT=${STREAMLIT_PORT:-8502}
+      - STREAMLIT_SERVER_PORT=${STREAMLIT_PORT:-8502}
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+      - TZ=America/Campo_Grande
+      - HOST_IP=${HOST_IP:-localhost}
     volumes:
       - .:/app
       - /app/__pycache__
-    command: sh -c "streamlit run dashboard.py --server.port=$${STREAMLIT_PORT:-8502}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${STREAMLIT_PORT:-8502}/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 
 

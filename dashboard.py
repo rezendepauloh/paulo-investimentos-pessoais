@@ -37,6 +37,7 @@ from src.tabs import (
     render_tab_fundamentalista,
     render_tab_consultoria_ia,
     render_tab_importar_gastos,
+    render_tab_editor_planilhas,
     render_tab_configuracoes
 )
 from src.services import (
@@ -110,6 +111,8 @@ elif current_page == "consultoria_ia" or current_page == "🤖 Consultoria de Al
     render_tab_consultoria_ia(df_holdings, df_receitas, df_despesas, df_dividendos, df_orders)
 elif current_page == "importar_gastos" or current_page == "📥 Importação de Dados para GSheets":
     render_tab_importar_gastos(df_receitas, df_despesas)
+elif current_page == "editor_planilhas" or current_page == "📝 Editor de Planilhas":
+    render_tab_editor_planilhas()
 elif current_page == "configuracoes" or current_page == "⚙️ Configurações do Sistema":
     render_tab_configuracoes()
 

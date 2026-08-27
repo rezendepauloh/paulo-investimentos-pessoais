@@ -227,34 +227,220 @@ def get_gspread_client():
     credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
     return gspread.authorize(credentials)
 
+def get_budget_spreadsheet_id_for_year(ano: str | int) -> str | None:
+    """
+    Retorna o ID da planilha de orçamento do Google Sheets para o ano informado.
+    Busca nas variáveis de ambiente na seguinte ordem de prioridade:
+    1. SPREADSHEET_BUDGET_ID_{ANO} (ex: SPREADSHEET_BUDGET_ID_2027)
+    2. SPREADSHEET_BUDGET_IDS (JSON ex: {"2026": "...", "2027": "..."})
+    3. SPREADSHEET_BUDGET_ID (fallback geral)
+    """
+    ano_str = str(ano).strip()
+    
+    # 1. Variável de ambiente específica por ano
+    env_ano_key = f"SPREADSHEET_BUDGET_ID_{ano_str}"
+    val_ano = os.getenv(env_ano_key)
+    if val_ano and val_ano.strip():
+        return val_ano.strip()
+        
+    # 2. JSON de múltiplos anos
+    json_ids = os.getenv("SPREADSHEET_BUDGET_IDS", "")
+    if json_ids:
+        try:
+            parsed = json.loads(json_ids)
+            if isinstance(parsed, dict) and ano_str in parsed and parsed[ano_str]:
+                return str(parsed[ano_str]).strip()
+        except Exception as e:
+            logger.warning(f"Erro ao decodificar SPREADSHEET_BUDGET_IDS: {e}")
+            
+    # 3. Fallback para ID geral
+    return os.getenv("SPREADSHEET_BUDGET_ID")
+
+def get_all_budget_spreadsheets() -> dict[str, str]:
+    """
+    Retorna um dicionário {ano: spreadsheet_id} de todas as planilhas de orçamento
+    configuradas no ambiente (.env). Permite suporte escalável a 2026, 2027 e anos futuros.
+    """
+    planilhas = {}
+    
+    # 1. Varre variáveis no formato SPREADSHEET_BUDGET_ID_<ANO>
+    pattern = re.compile(r"^SPREADSHEET_BUDGET_ID_(\d{4})$", re.IGNORECASE)
+    for key, value in os.environ.items():
+        match = pattern.match(key)
+        if match and value and value.strip():
+            ano = match.group(1)
+            planilhas[ano] = value.strip()
+            
+    # 2. Varre JSON SPREADSHEET_BUDGET_IDS se configurado
+    json_ids = os.getenv("SPREADSHEET_BUDGET_IDS", "")
+    if json_ids:
+        try:
+            parsed = json.loads(json_ids)
+            if isinstance(parsed, dict):
+                for k, v in parsed.items():
+                    if str(k).isdigit() and v and str(v).strip():
+                        planilhas[str(k)] = str(v).strip()
+        except Exception as e:
+            logger.warning(f"Erro ao decodificar SPREADSHEET_BUDGET_IDS: {e}")
+
+    # 3. Se nenhuma planilha por ano foi encontrada, utiliza o fallback SPREADSHEET_BUDGET_ID
+    if not planilhas:
+        default_id = os.getenv("SPREADSHEET_BUDGET_ID")
+        if default_id and default_id.strip():
+            planilhas["2026"] = default_id.strip()
+
+    return dict(sorted(planilhas.items()))
+
+import time
+
 @st.cache_data(ttl=600)  # Cache de 10 minutos para não estourar cota do Sheets
-def load_sheet_data(spreadsheet_id, sheet_name):
+def load_sheet_data(spreadsheet_id, sheet_name, max_retries=3):
     """
     Carrega os dados de uma aba específica de uma planilha como um DataFrame do Pandas.
+    Inclui tentativas automáticas com backoff para resiliência a instabilidades do Google API (503 / 429).
     """
+    for attempt in range(1, max_retries + 1):
+        try:
+            client = get_gspread_client()
+            spreadsheet = client.open_by_key(spreadsheet_id)
+            worksheet = spreadsheet.worksheet(sheet_name)
+            records = worksheet.get_all_records()
+            
+            if not records:
+                data = worksheet.get_all_values()
+                if len(data) > 1:
+                    headers = [h.strip() for h in data[0]]
+                    rows = data[1:]
+                    df = pd.DataFrame(rows, columns=headers)
+                else:
+                    return pd.DataFrame()
+            else:
+                df = pd.DataFrame(records)
+                
+            df.columns = [col.strip() for col in df.columns]
+            return df
+        except Exception as e:
+            err_str = str(e)
+            if ("503" in err_str or "429" in err_str or "unavailable" in err_str.lower()) and attempt < max_retries:
+                logger.warning(f"Instabilidade temporária no Google Sheets ({err_str}). Tentativa {attempt}/{max_retries}. Aguardando...")
+                time.sleep(1.5 * attempt)
+                continue
+            logger.error(f"Erro ao carregar a aba '{sheet_name}' da planilha '{spreadsheet_id}' (tentativa {attempt}/{max_retries}): {e}")
+            if attempt == max_retries:
+                return pd.DataFrame()
+    return pd.DataFrame()
+
+def update_worksheet_from_dataframe(spreadsheet_id: str, worksheet_name: str, df: pd.DataFrame) -> bool:
+    """
+    Substitui com segurança o conteúdo de uma aba específica no Google Sheets com o DataFrame fornecido,
+    formatando datas, números e texto no padrão nativo compatível com fórmulas e tabelas do Google Sheets.
+    """
+    if not spreadsheet_id or not worksheet_name:
+        raise ValueError("ID da planilha ou nome da aba inválido.")
+        
     try:
         client = get_gspread_client()
         spreadsheet = client.open_by_key(spreadsheet_id)
-        worksheet = spreadsheet.worksheet(sheet_name)
-        records = worksheet.get_all_records()
+        worksheet = spreadsheet.worksheet(worksheet_name)
         
-        if not records:
-            data = worksheet.get_all_values()
-            if len(data) > 1:
-                headers = [h.strip() for h in data[0]]
-                rows = data[1:]
-                df = pd.DataFrame(rows, columns=headers)
-            else:
-                return pd.DataFrame()
-        else:
-            df = pd.DataFrame(records)
+        df_export = df.copy()
+        
+        # Formata colunas de data para DD/MM/YYYY
+        for col in df_export.columns:
+            if pd.api.types.is_datetime64_any_dtype(df_export[col]):
+                df_export[col] = df_export[col].dt.strftime("%d/%m/%Y").fillna("")
+            elif "data" in col.lower() or "em" in col.lower():
+                def format_date_cell(val):
+                    if pd.isna(val) or str(val).strip() in ["", "NaT", "None"]:
+                        return ""
+                    val_str = str(val).strip()
+                    try:
+                        if "-" in val_str and len(val_str.split("-")[0]) == 4:
+                            dt = pd.to_datetime(val_str, errors="coerce")
+                            if not pd.isna(dt):
+                                return dt.strftime("%d/%m/%Y")
+                    except Exception:
+                        pass
+                    return val_str
+                df_export[col] = df_export[col].apply(format_date_cell)
+            elif df_export[col].dtype == object:
+                df_export[col] = df_export[col].fillna("").astype(str).str.strip()
+                
+        df_export = df_export.fillna("")
+        
+        header = [str(c).strip() for c in df_export.columns.tolist()]
+        data_values = df_export.values.tolist()
+        
+        clean_rows = []
+        for row in data_values:
+            clean_row = []
+            for item in row:
+                if pd.isna(item) or str(item) in ["nan", "None", "NaT"]:
+                    clean_row.append("")
+                elif isinstance(item, (int, float)):
+                    clean_row.append(item)
+                else:
+                    clean_row.append(str(item))
+            clean_rows.append(clean_row)
             
-        df.columns = [col.strip() for col in df.columns]
-        return df
+        all_rows = [header] + clean_rows
+        
+        worksheet.clear()
+        try:
+            worksheet.update(range_name="A1", values=all_rows, value_input_option="USER_ENTERED")
+        except TypeError:
+            try:
+                worksheet.update("A1", all_rows, value_input_option="USER_ENTERED")
+            except Exception:
+                worksheet.update(all_rows, value_input_option="USER_ENTERED")
+
+        # Limpa cache do carregador de planilhas
+        try:
+            load_sheet_data.clear()
+        except Exception:
+            pass
+
+        logger.info(f"Aba '{worksheet_name}' da planilha '{spreadsheet_id}' atualizada com sucesso ({len(df)} registros).")
+        return True
     except Exception as e:
-        logger.error(f"Erro ao carregar a aba '{sheet_name}' da planilha '{spreadsheet_id}': {e}")
-        st.error(f"Erro ao carregar a aba '{sheet_name}' da planilha '{spreadsheet_id}': {e}")
-        return pd.DataFrame()
+        logger.error(f"Erro ao atualizar aba '{worksheet_name}' da planilha '{spreadsheet_id}': {e}")
+        raise e
+
+def get_all_editable_spreadsheets() -> list[dict]:
+    """
+    Retorna uma lista estruturada de todas as planilhas e abas editáveis disponíveis no sistema,
+    incluindo planilhas de Orçamento anuais (2026, 2027, futuros anos) e Planilha de Ordens.
+    """
+    sheets_list = []
+    
+    # 1. Planilhas de Orçamento por ano
+    budget_spreadsheets = get_all_budget_spreadsheets()
+    for ano, b_id in budget_spreadsheets.items():
+        if b_id:
+            sheets_list.append({
+                "id": f"budget_{ano}",
+                "title": f"Planilha de Orçamento {ano}",
+                "type": "budget",
+                "year": ano,
+                "spreadsheet_id": b_id,
+                "tabs": ["Despesas", "Receitas"],
+                "url": f"https://docs.google.com/spreadsheets/d/{b_id}/edit"
+            })
+            
+    # 2. Planilha de Ordens
+    orders_id = os.getenv("SPREADSHEET_ORDERS_ID")
+    if orders_id:
+        sheets_list.append({
+            "id": "orders",
+            "title": "Planilha de Ordens (Investimentos)",
+            "type": "orders",
+            "year": None,
+            "spreadsheet_id": orders_id,
+            "tabs": ["Ordens"],
+            "url": f"https://docs.google.com/spreadsheets/d/{orders_id}/edit"
+        })
+        
+    return sheets_list
 
 def append_transactions_to_sheets(df_transacoes: pd.DataFrame) -> dict:
     """
@@ -386,19 +572,33 @@ def append_transactions_to_sheets(df_transacoes: pd.DataFrame) -> dict:
                     "Essencial vs. Não Essencial": essencial
                 })
 
-        # Localiza planilha anual no Google Drive
+        # Localiza planilha anual no Google Drive ou por ID específico do ano
         spreadsheet = None
         if client is not None:
-            try:
-                sheet_title = f"Planilha de Orçamento {ano}"
-                spreadsheet = client.open(sheet_title)
-            except Exception:
+            # 1. Tenta abrir pelo ID específico do ano configurado no .env (ex: SPREADSHEET_BUDGET_ID_2027)
+            budget_id_ano = get_budget_spreadsheet_id_for_year(ano)
+            if budget_id_ano:
+                try:
+                    spreadsheet = client.open_by_key(budget_id_ano)
+                except Exception as e:
+                    logger.warning(f"Não foi possível abrir planilha por ID para o ano {ano}: {e}")
+
+            # 2. Se não abriu por ID, tenta abrir por título no Drive
+            if spreadsheet is None:
+                try:
+                    sheet_title = f"Planilha de Orçamento {ano}"
+                    spreadsheet = client.open(sheet_title)
+                except Exception:
+                    pass
+
+            # 3. Fallback para SPREADSHEET_BUDGET_ID geral
+            if spreadsheet is None:
                 budget_id = os.getenv("SPREADSHEET_BUDGET_ID")
                 if budget_id:
                     try:
                         spreadsheet = client.open_by_key(budget_id)
                     except Exception as e:
-                        logger.error(f"Erro ao abrir planilha: {e}")
+                        logger.error(f"Erro ao abrir planilha fallback: {e}")
 
             if spreadsheet is not None:
                 if despesas_ano_sheet:
@@ -696,8 +896,8 @@ def get_budget_data(use_mock=False):
         logger.error(f"Erro ao ler Orçamento do SQLite local: {e}. Caindo de volta para o Google Sheets.")
         
     # Fallback para o Sheets se o banco estiver vazio
-    budget_id = os.getenv("SPREADSHEET_BUDGET_ID")
-    if not budget_id:
+    budget_spreadsheets = get_all_budget_spreadsheets()
+    if not budget_spreadsheets:
         return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         
     logger.info("Banco SQLite vazio. Disparando sincronização inicial automática do Orçamento...")
@@ -747,7 +947,7 @@ def get_orders_data(use_mock=False):
 def sync_google_sheets_to_sqlite():
     """
     Sincroniza todas as planilhas do Google Sheets para o SQLite local de forma incremental/delta.
-    Descontinua a aba legada Dividendos, unificando todos os lançamentos patrimoniais em Receitas.
+    Suporta múltiplos anos de planilhas de orçamento (2026, 2027, etc.) consolidando-os em tabelas unificadas.
     """
     logger.info("Iniciando sincronização incremental do Google Sheets para o SQLite local...")
     
@@ -775,63 +975,83 @@ def sync_google_sheets_to_sqlite():
                 df_orders = clean_and_normalize_orders(df_orders)
                 db_manager.clear_table("ordens")
                 db_manager.save_dataframe_delta("ordens", df_orders, None)
+                logger.info(f"Ordens sincronizadas com sucesso: {len(df_orders)} registros.")
         except Exception as e:
             logger.error(f"Erro ao sincronizar aba Ordens: {e}")
             
-    # 2. Sincroniza Orçamento (Receitas e Despesas)
-    budget_id = os.getenv("SPREADSHEET_BUDGET_ID")
-    if budget_id:
-        try:
-            logger.info("Buscando lançamentos orçamentários do Google Sheets...")
-            
-            # Receitas (inclui proventos/dividendos unificados)
-            df_receitas = load_sheet_data(budget_id, "Receitas")
-            if not df_receitas.empty:
-                df_receitas["Nome"] = df_receitas["Nome"].astype(str).str.strip()
-                df_receitas["Categoria"] = df_receitas["Categoria"].astype(str).str.strip()
-                if "Conta creditada" in df_receitas.columns:
-                    df_receitas["Conta creditada"] = df_receitas["Conta creditada"].astype(str).str.strip()
-                df_receitas["Valor"] = df_receitas["Valor"].apply(clean_currency)
-                df_receitas["Recebido em"] = pd.to_datetime(df_receitas["Recebido em"], format="%d/%m/%Y", errors="coerce")
-                df_receitas["Dias até"] = df_receitas["Dias até"].apply(clean_int)
-                db_manager.clear_table("receitas")
-                db_manager.save_dataframe_delta("receitas", df_receitas, None)
+    # 2. Sincroniza Orçamento (Receitas e Despesas) para todos os anos configurados
+    budget_spreadsheets = get_all_budget_spreadsheets()
+    if budget_spreadsheets:
+        anos_configurados = list(budget_spreadsheets.keys())
+        logger.info(f"Buscando lançamentos orçamentários dos anos configurados: {anos_configurados}...")
+        
+        all_receitas = []
+        all_despesas = []
+        
+        for ano, b_id in budget_spreadsheets.items():
+            if not b_id:
+                continue
+            try:
+                logger.info(f"Sincronizando Orçamento do ano {ano} (Planilha: {b_id[:8]}...)...")
                 
-            # Despesas
-            df_despesas = load_sheet_data(budget_id, "Despesas")
-            if not df_despesas.empty:
-                df_despesas["Nome"] = df_despesas["Nome"].astype(str).str.strip()
-                df_despesas["Categoria"] = df_despesas["Categoria"].astype(str).str.strip()
-                if "Conta debitada" in df_despesas.columns:
-                    df_despesas["Conta debitada"] = df_despesas["Conta debitada"].astype(str).str.strip()
-                if "Tipo de Cobrança" in df_despesas.columns:
-                    df_despesas["Tipo de Cobrança"] = df_despesas["Tipo de Cobrança"].astype(str).str.strip()
-                
-                # Normaliza colunas Fixo/Variável e Essencial/Não Essencial
-                col_rename_despesas = {}
-                for col in df_despesas.columns:
-                    c_low = col.lower().strip()
-                    if "fixo" in c_low and "vari" in c_low:
-                        col_rename_despesas[col] = "Fixo vs. Variável"
-                    elif "essencial" in c_low:
-                        col_rename_despesas[col] = "Essencial vs. Não Essencial"
-                if col_rename_despesas:
-                    df_despesas = df_despesas.rename(columns=col_rename_despesas)
+                # Receitas
+                df_rec = load_sheet_data(b_id, "Receitas")
+                if not df_rec.empty:
+                    df_rec["Nome"] = df_rec["Nome"].astype(str).str.strip()
+                    df_rec["Categoria"] = df_rec["Categoria"].astype(str).str.strip()
+                    if "Conta creditada" in df_rec.columns:
+                        df_rec["Conta creditada"] = df_rec["Conta creditada"].astype(str).str.strip()
+                    df_rec["Valor"] = df_rec["Valor"].apply(clean_currency)
+                    df_rec["Recebido em"] = pd.to_datetime(df_rec["Recebido em"], format="%d/%m/%Y", errors="coerce")
+                    df_rec["Dias até"] = df_rec["Dias até"].apply(clean_int)
+                    all_receitas.append(df_rec)
                     
-                if "Fixo vs. Variável" in df_despesas.columns:
-                    df_despesas["Fixo vs. Variável"] = df_despesas["Fixo vs. Variável"].astype(str).str.strip()
-                if "Essencial vs. Não Essencial" in df_despesas.columns:
-                    df_despesas["Essencial vs. Não Essencial"] = df_despesas["Essencial vs. Não Essencial"].astype(str).str.strip()
+                # Despesas
+                df_desp = load_sheet_data(b_id, "Despesas")
+                if not df_desp.empty:
+                    df_desp["Nome"] = df_desp["Nome"].astype(str).str.strip()
+                    df_desp["Categoria"] = df_desp["Categoria"].astype(str).str.strip()
+                    if "Conta debitada" in df_desp.columns:
+                        df_desp["Conta debitada"] = df_desp["Conta debitada"].astype(str).str.strip()
+                    if "Tipo de Cobrança" in df_desp.columns:
+                        df_desp["Tipo de Cobrança"] = df_desp["Tipo de Cobrança"].astype(str).str.strip()
                     
-                df_despesas["Valor"] = df_despesas["Valor"].apply(clean_currency)
-                df_despesas["Gasto em"] = pd.to_datetime(df_despesas["Gasto em"], format="%d/%m/%Y", errors="coerce")
-                df_despesas["Dias até"] = df_despesas["Dias até"].apply(clean_int)
-                db_manager.clear_table("despesas")
-                db_manager.save_dataframe_delta("despesas", df_despesas, None)
+                    # Normaliza colunas Fixo/Variável e Essencial/Não Essencial
+                    col_rename_despesas = {}
+                    for col in df_desp.columns:
+                        c_low = col.lower().strip()
+                        if "fixo" in c_low and "vari" in c_low:
+                            col_rename_despesas[col] = "Fixo vs. Variável"
+                        elif "essencial" in c_low:
+                            col_rename_despesas[col] = "Essencial vs. Não Essencial"
+                    if col_rename_despesas:
+                        df_desp = df_desp.rename(columns=col_rename_despesas)
+                        
+                    if "Fixo vs. Variável" in df_desp.columns:
+                        df_desp["Fixo vs. Variável"] = df_desp["Fixo vs. Variável"].astype(str).str.strip()
+                    if "Essencial vs. Não Essencial" in df_desp.columns:
+                        df_desp["Essencial vs. Não Essencial"] = df_desp["Essencial vs. Não Essencial"].astype(str).str.strip()
+                        
+                    df_desp["Valor"] = df_desp["Valor"].apply(clean_currency)
+                    df_desp["Gasto em"] = pd.to_datetime(df_desp["Gasto em"], format="%d/%m/%Y", errors="coerce")
+                    df_desp["Dias até"] = df_desp["Dias até"].apply(clean_int)
+                    all_despesas.append(df_desp)
+            except Exception as e:
+                logger.error(f"Erro ao sincronizar planilha de orçamento do ano {ano}: {e}")
 
-        except Exception as e:
-            logger.error(f"Erro ao sincronizar aba Orçamento: {e}")
+        # Persiste consolidado no SQLite
+        if all_receitas:
+            df_receitas_total = pd.concat(all_receitas, ignore_index=True)
+            db_manager.clear_table("receitas")
+            db_manager.save_dataframe_delta("receitas", df_receitas_total, None)
+            logger.info(f"Total de {len(df_receitas_total)} receitas consolidadas de {len(all_receitas)} ano(s) no SQLite.")
             
+        if all_despesas:
+            df_despesas_total = pd.concat(all_despesas, ignore_index=True)
+            db_manager.clear_table("despesas")
+            db_manager.save_dataframe_delta("despesas", df_despesas_total, None)
+            logger.info(f"Total de {len(df_despesas_total)} despesas consolidadas de {len(all_despesas)} ano(s) no SQLite.")
+
     db_manager.set_last_sync_time()
     logger.info("Sincronização delta incremental concluída com sucesso.")
 

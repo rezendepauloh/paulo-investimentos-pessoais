@@ -26,7 +26,7 @@ cp .env.example .env
 
 Abra o arquivo `.env` e configure:
 
-- Os IDs das suas planilhas (`SPREADSHEET_BUDGET_ID` e `SPREADSHEET_ORDERS_ID`).
+- Os IDs das suas planilhas (`SPREADSHEET_BUDGET_ID_2026`, `SPREADSHEET_BUDGET_ID_2027`, ..., `SPREADSHEET_ORDERS_ID`).
 - A sua chave da API do Gemini (`GEMINI_API_KEY`), obtida em [Google AI Studio](https://aistudio.google.com/).
 - A porta do servidor (padrão: `STREAMLIT_PORT=8502`).
 
@@ -106,7 +106,8 @@ paulo-investimentos-pessoais/
 │   │   ├── fundamentalista.py      # Tab 4: Análise Fundamentalista e FIIs
 │   │   ├── consultoria_ia.py       # Tab 5: Consultoria de Alocação com IA
 │   │   ├── importar_gastos.py      # Tab 6: Ingestão Inteligente e Conciliação
-│   │   └── configuracoes.py        # Tab 7: Configurações Globais, Credenciais e Sync
+│   │   ├── editor_planilhas.py     # Tab 7: Editor de Dados das Planilhas & SQLite
+│   │   └── configuracoes.py        # Tab 8: Configurações Globais, Credenciais e Sync
 │   └── utils/                      # Funções utilitárias compartilhadas
 │       ├── __init__.py
 │       ├── formatting.py           # Formatação de moedas, números e normalização
@@ -139,9 +140,10 @@ A aplicação sincroniza automaticamente o estado das páginas e subabas na barr
 | **🔍 Análise Fundamentalista** | `?tab=fundamentalista` | `&subtab=balanco`, `&subtab=dre`, `&subtab=fluxo` |
 | **🤖 Consultoria de Alocação com IA** | `?tab=consultoria_ia` | — |
 | **📥 Importação de Dados** | `?tab=importar_gastos` | `&subtab=comprovantes`, `&subtab=arquivos`, `&subtab=open_finance` |
+| **📝 Editor de Planilhas** | `?tab=editor_planilhas` | — |
 | **⚙️ Configurações do Sistema** | `?tab=configuracoes` | — |
 
-*Exemplo de acesso direto:* `http://localhost:8502/?tab=configuracoes`
+*Exemplo de acesso direto:* `http://localhost:8502/?tab=editor_planilhas`
 
 ---
 
