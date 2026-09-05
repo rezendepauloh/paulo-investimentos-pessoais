@@ -58,36 +58,11 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
     # Métricas Globais (respeitando classes filtradas)
     total_market_val = df_holdings_filtered["valor_atual"].sum() if not df_holdings_filtered.empty else 0.0
     
-    # Calcula o Capital Investido líquido (Aportes - Resgates/Vendas)
-    total_invested = 0.0
-    if not df_orders.empty:
-        usd_brl_rate = get_usd_brl_rate()
-        active_tickers = df_holdings_filtered["ticker"].tolist() if not df_holdings_filtered.empty else []
-        for _, row in df_orders.iterrows():
-            papel = str(row.get("Papel", "")).strip()
-            if active_tickers and papel not in active_tickers:
-                continue
-
-            action = str(row.get("Compra/Venda", "")).strip().upper()
-            val = float(row.get("Total líquido", 0))
-            moeda = str(row.get("Moeda", "BRL")).strip().upper()
-            qty = float(row.get("Qtd Executada", 0))
-            
-            # Conversão para BRL se for USD
-            if moeda == "USD":
-                is_planilha_em_brl = False
-                if val >= 1000.0 or (qty > 0 and (val / qty) > 15.0):
-                    is_planilha_em_brl = True
-                val_brl = val if is_planilha_em_brl else val * usd_brl_rate
-            else:
-                val_brl = val
-                
-            if any(op in action for op in ["COMPRA", "C", "SUBSCRIÇÃO", "SUBSCRICAO"]):
-                total_invested += val_brl
-            elif "VENDA" in action or action == "V":
-                total_invested -= val_brl
+    # Calcula o Capital Investido da carteira filtrada (total de custo acumulado dos ativos em custódia)
+    if not df_holdings_filtered.empty and "total_investido" in df_holdings_filtered.columns:
+        total_invested = float(df_holdings_filtered["total_investido"].sum())
     else:
-        total_invested = df_holdings_filtered["total_investido"].sum() if not df_holdings_filtered.empty else 0.0
+        total_invested = 0.0
         
     total_profit = total_market_val - total_invested
     total_return_pct = (total_profit / total_invested) * 100.0 if total_invested > 0 else 0.0

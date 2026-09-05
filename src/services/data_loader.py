@@ -304,7 +304,7 @@ def load_sheet_data(spreadsheet_id, sheet_name, max_retries=3):
             client = get_gspread_client()
             spreadsheet = client.open_by_key(spreadsheet_id)
             worksheet = spreadsheet.worksheet(sheet_name)
-            records = worksheet.get_all_records()
+            records = worksheet.get_all_records(numericise_ignore=['all'])
             
             if not records:
                 data = worksheet.get_all_values()
@@ -844,7 +844,7 @@ CATEGORIAS_PROVENTOS = [
     "Frações"
 ]
 
-def get_budget_data(use_mock=False):
+def get_budget_data(use_mock=False, _is_retry=False):
     """
     Carrega os dados de Orçamento. Prioriza a leitura do banco de dados SQLite local,
     caindo de volta para o Google Sheets se o SQLite estiver vazio.
@@ -895,6 +895,10 @@ def get_budget_data(use_mock=False):
     except Exception as e:
         logger.error(f"Erro ao ler Orçamento do SQLite local: {e}. Caindo de volta para o Google Sheets.")
         
+    if _is_retry:
+        logger.warning("Banco SQLite permanece vazio após tentativa de sincronização com o Google Sheets.")
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
     # Fallback para o Sheets se o banco estiver vazio
     budget_spreadsheets = get_all_budget_spreadsheets()
     if not budget_spreadsheets:
@@ -902,9 +906,9 @@ def get_budget_data(use_mock=False):
         
     logger.info("Banco SQLite vazio. Disparando sincronização inicial automática do Orçamento...")
     sync_google_sheets_to_sqlite()
-    return get_budget_data(use_mock=False)
+    return get_budget_data(use_mock=False, _is_retry=True)
 
-def get_orders_data(use_mock=False):
+def get_orders_data(use_mock=False, _is_retry=False):
     """
     Carrega dados de ordens de investimento. Prioriza o banco SQLite local, 
     caindo de volta para o Google Sheets se estiver vazio.
@@ -940,9 +944,13 @@ def get_orders_data(use_mock=False):
     except Exception as e:
         logger.error(f"Erro ao ler Ordens do SQLite local: {e}. Caindo de volta para o Google Sheets.")
         
+    if _is_retry:
+        logger.warning("Banco SQLite de Ordens permanece vazio após tentativa de sincronização.")
+        return pd.DataFrame()
+
     logger.info("Banco SQLite vazio. Disparando sincronização inicial automática das Ordens...")
     sync_google_sheets_to_sqlite()
-    return get_orders_data(use_mock=False)
+    return get_orders_data(use_mock=False, _is_retry=True)
 
 def sync_google_sheets_to_sqlite():
     """
@@ -961,7 +969,7 @@ def sync_google_sheets_to_sqlite():
                 client = get_gspread_client()
                 spreadsheet = client.open_by_key(orders_id)
                 first_worksheet = spreadsheet.get_worksheet(0)
-                records = first_worksheet.get_all_records()
+                records = first_worksheet.get_all_records(numericise_ignore=['all'])
                 if records:
                     df_orders = pd.DataFrame(records)
                     df_orders.columns = [col.strip() for col in df_orders.columns]

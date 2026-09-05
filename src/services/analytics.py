@@ -1000,8 +1000,8 @@ def get_historical_performance(df_orders):
         else:
             if total_market_value > 0.0:
                 cota_atual = 1.0
-                
-            total_invested_net_running += fluxo_hoje
+
+        total_invested_net_running += fluxo_hoje
 
         cota_values.append(cota_atual)
         valor_ontem = total_market_value
