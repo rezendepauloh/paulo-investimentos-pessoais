@@ -69,12 +69,16 @@ load_env_file() {
 
     if [ -f .env ]; then
         local env_port
-        env_port=$(grep -E '^[[:space:]]*STREAMLIT_PORT[[:space:]]*=' .env | tail -n 1 | cut -d '=' -f 2 | tr -d ' "\r\n' | tr -d "'")
+        env_port=$(grep -E '^[[:space:]]*PORT[[:space:]]*=' .env | tail -n 1 | cut -d '=' -f 2 | tr -d ' "\r\n' | tr -d "'")
+        if [ -z "$env_port" ]; then
+            env_port=$(grep -E '^[[:space:]]*STREAMLIT_PORT[[:space:]]*=' .env | tail -n 1 | cut -d '=' -f 2 | tr -d ' "\r\n' | tr -d "'")
+        fi
         if [ -n "$env_port" ]; then
             PORT="$env_port"
         fi
     fi
-    PORT="${PORT:-8502}"
+    PORT="${PORT:-8503}"
+    export PORT="$PORT"
     export STREAMLIT_PORT="$PORT"
 }
 
@@ -262,6 +266,130 @@ stop_system() {
     echo -e "${C_GREEN}Containers encerrados com sucesso!${C_RESET}"
 }
 
+deploy_homelab() {
+    clear
+    echo -e "${C_CYAN}${C_BOLD}==============================================================${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}   🚀 DEPLOY REMOTO NO HOMELAB (MINI PC - 192.168.0.8)       ${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}==============================================================${C_RESET}"
+    echo ""
+
+    load_env_file
+
+    local HOST="${HOMELAB_HOST:-192.168.0.8}"
+    local USER="${HOMELAB_USER:-umbrel}"
+    local PORT_SSH="${HOMELAB_PORT:-22}"
+    local DEST_DIR="${HOMELAB_DEST_DIR:-/home/umbrel/umbrelos-scripts/compose/paulo-investimentos-pessoais}"
+    local SSH_KEY="${HOMELAB_SSH_KEY:-~/.ssh/id_ed25519}"
+    SSH_KEY="${SSH_KEY/#\~/$HOME}"
+
+    local SSH_OPTS="-p ${PORT_SSH} -o StrictHostKeyChecking=accept-new"
+    local SCP_OPTS="-P ${PORT_SSH} -o StrictHostKeyChecking=accept-new"
+    if [ -f "$SSH_KEY" ]; then
+        SSH_OPTS="$SSH_OPTS -i $SSH_KEY"
+        SCP_OPTS="$SCP_OPTS -i $SSH_KEY"
+    fi
+
+    # 1. Testar conectividade (Ping)
+    echo -e "${C_YELLOW}[1/5] Verificando conectividade com o servidor (${HOST})...${C_RESET}"
+    if ! ping -c 1 -W 2 "$HOST" >/dev/null 2>&1; then
+        echo -e "${C_RED}❌ Não foi possível alcançar ${HOST}. Verifique se o Mini PC está ligado e conectado na mesma rede.${C_RESET}"
+        read -p "Pressione ENTER para voltar ao menu..." dummy
+        return 1
+    fi
+    echo -e "${C_GREEN}✅ Servidor ${HOST} respondendo perfeitamente!${C_RESET}"
+    echo ""
+
+    # 2. Criar diretório remoto se não existir e preparar arquivos de persistência
+    echo -e "${C_YELLOW}[2/5] Garantindo diretório da stack no Mini PC (${DEST_DIR})...${C_RESET}"
+    ssh $SSH_OPTS "${USER}@${HOST}" "mkdir -p ${DEST_DIR}/data ${DEST_DIR}/logs && chmod 777 ${DEST_DIR}/data ${DEST_DIR}/logs ${DEST_DIR} 2>/dev/null || true"
+    if [ $? -ne 0 ]; then
+        echo -e "${C_RED}❌ Falha na comunicação SSH com ${USER}@${HOST}.${C_RESET}"
+        read -p "Pressione ENTER para voltar ao menu..." dummy
+        return 1
+    fi
+    echo -e "${C_GREEN}✅ Diretório e pastas de persistência preparados com sucesso!${C_RESET}"
+    echo ""
+
+    # 3. Sincronizar arquivos via Rsync (com exclusões seguras)
+    echo -e "${C_YELLOW}[3/5] Enviando código-fonte e assets via rsync...${C_RESET}"
+    rsync -avz \
+        -e "ssh $SSH_OPTS" \
+        --exclude '.git' \
+        --exclude '.venv' \
+        --exclude '__pycache__' \
+        --exclude '.pytest_cache' \
+        --exclude 'logs' \
+        --exclude 'scratch' \
+        --exclude 'temp' \
+        --exclude '.env' \
+        --exclude 'docker-compose.yml' \
+        --exclude 'docker-compose.server.yml' \
+        ./ "${USER}@${HOST}:${DEST_DIR}/"
+
+    if [ $? -ne 0 ]; then
+        echo -e "${C_RED}❌ Erro durante a transferência rsync.${C_RESET}"
+        read -p "Pressione ENTER para voltar ao menu..." dummy
+        return 1
+    fi
+    echo -e "${C_GREEN}✅ Código-fonte sincronizado com sucesso!${C_RESET}"
+    echo ""
+
+    # 4. Configurar docker-compose.yml, credenciais e .env de produção no servidor
+    echo -e "${C_YELLOW}[4/5] Configurando docker-compose e .env de produção no servidor...${C_RESET}"
+
+    # Envia credentials.json para a pasta data do servidor se existir localmente
+    if [ -f "data/credentials.json" ]; then
+        echo -e "${C_CYAN}Enviando data/credentials.json para o servidor...${C_RESET}"
+        scp $SCP_OPTS "data/credentials.json" "${USER}@${HOST}:${DEST_DIR}/data/credentials.json"
+    fi
+
+    # Prepara cópia do .env de produção local temporária
+    local TEMP_PROD_ENV="/tmp/investimentos_prod.env.$$"
+    cp .env "$TEMP_PROD_ENV"
+
+    local SERVER_APP_PORT="${HOMELAB_PORT_APP:-8094}"
+
+    # Ajusta PORT externa do servidor para a porta configurada no homelab
+    if grep -q '^PORT=' "$TEMP_PROD_ENV"; then
+        sed -i "s/^PORT=.*/PORT=${SERVER_APP_PORT}/" "$TEMP_PROD_ENV"
+    else
+        echo "PORT=${SERVER_APP_PORT}" >> "$TEMP_PROD_ENV"
+    fi
+
+    if grep -q '^STREAMLIT_PORT=' "$TEMP_PROD_ENV"; then
+        sed -i "s/^STREAMLIT_PORT=.*/STREAMLIT_PORT=${SERVER_APP_PORT}/" "$TEMP_PROD_ENV"
+    fi
+
+    scp $SCP_OPTS "$TEMP_PROD_ENV" "${USER}@${HOST}:${DEST_DIR}/.env"
+    rm -f "$TEMP_PROD_ENV"
+
+    # Envia docker-compose.server.yml como docker-compose.yml oficial no servidor (reconhecido pelo Dockge)
+    if [ -f "docker-compose.server.yml" ]; then
+        scp $SCP_OPTS "docker-compose.server.yml" "${USER}@${HOST}:${DEST_DIR}/docker-compose.yml"
+    else
+        echo -e "${C_RED}❌ Arquivo docker-compose.server.yml não encontrado!${C_RESET}"
+        read -p "Pressione ENTER para voltar ao menu..." dummy
+        return 1
+    fi
+    echo -e "${C_GREEN}✅ Arquivos de ambiente e stack compose configurados!${C_RESET}"
+    echo ""
+
+    # 5. Executar Build e Up no Docker do Mini PC
+    echo -e "${C_YELLOW}[5/5] Reiniciando aplicação com a nova build no Mini PC...${C_RESET}"
+    ssh -t $SSH_OPTS "${USER}@${HOST}" "cd ${DEST_DIR} && (docker compose up -d --build app || sudo docker compose up -d --build app)"
+
+    if [ $? -eq 0 ]; then
+        echo ""
+        echo -e "${C_GREEN}${C_BOLD}🎉 DEPLOY CONCLUÍDO COM SUCESSO NO HOMELAB!${C_RESET}"
+        echo -e "Acesse pelo Dockge: ${C_CYAN}http://${HOST}:5001${C_RESET}"
+        echo -e "Acesse a aplicação: ${C_CYAN}http://${HOST}:${SERVER_APP_PORT}${C_RESET}"
+    else
+        echo -e "${C_RED}❌ Ocorreu um erro ao iniciar a stack no servidor remoto.${C_RESET}"
+    fi
+    echo ""
+    read -p "Pressione [Enter] para voltar ao menu..." dummy
+}
+
 show_menu() {
     clear
     echo -e "${C_CYAN}${C_BOLD}╔══════════════════════════════════════════════════════════════╗${C_RESET}"
@@ -272,15 +400,17 @@ show_menu() {
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}2${C_RESET} - Reconstruir Imagem Docker (--no-cache)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}3${C_RESET} - Executar Diagnóstico da Carteira Histórica              ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}4${C_RESET} - Parar containers (docker compose down)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_MAGENTA}5${C_RESET} - 🚀 Deploy no Mini PC (Dockge / Homelab)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_RED}0${C_RESET} - Sair                                                    ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}╚══════════════════════════════════════════════════════════════╝${C_RESET}"
     echo ""
-    read -p "Opção [0-4]: " opcao
+    read -p "Opção [0-5]: " opcao
     case "$opcao" in
         1) start_system false ;;
         2) rebuild_docker; show_menu ;;
         3) diagnostico_carteira; show_menu ;;
         4) stop_system ;;
+        5) deploy_homelab; show_menu ;;
         0) exit 0 ;;
         *) echo -e "${C_RED}Opção inválida.${C_RESET}"; sleep 1; show_menu ;;
     esac
@@ -302,6 +432,9 @@ case "$1" in
     --down|--stop|-d)
         stop_system
         ;;
+    --deploy|-dp)
+        deploy_homelab
+        ;;
     --help|-h)
         echo "Uso: ./00-iniciar.sh [OPÇÃO]"
         echo ""
@@ -311,6 +444,7 @@ case "$1" in
         echo "  --diagnostico, --diag    Executa o script de diagnóstico da carteira"
         echo "  --rebuild, -r            Reconstrói a imagem Docker (--no-cache)"
         echo "  --down, -d               Para os containers do sistema"
+        echo "  --deploy, -dp            Executa deploy no Mini PC (Dockge / Homelab)"
         echo "  --help, -h               Exibe esta ajuda"
         echo "  (sem argumentos)         Abre o menu interativo"
         ;;
@@ -318,3 +452,4 @@ case "$1" in
         show_menu
         ;;
 esac
+

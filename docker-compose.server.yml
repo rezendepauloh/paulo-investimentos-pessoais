@@ -1,0 +1,29 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: paulo-investimentos-app
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8094}:${PORT:-8094}"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - APP_ENV=prod
+      - PORT=${PORT:-8094}
+      - STREAMLIT_PORT=${PORT:-8094}
+      - STREAMLIT_SERVER_PORT=${PORT:-8094}
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      - TZ=America/Campo_Grande
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8094}/_stcore/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
