@@ -249,6 +249,22 @@ diagnostico_carteira() {
     read -p "Pressione ENTER para voltar ao menu..." dummy
 }
 
+rodar_testes() {
+    check_docker
+    load_env_file
+    clear
+    echo -e "${C_CYAN}Executando Suíte de Testes Automatizados no container...${C_RESET}"
+    docker compose run --rm app python tests/run_all.py
+    local status=$?
+    echo ""
+    if [ $status -eq 0 ]; then
+        echo -e "${C_GREEN}Suíte de testes finalizada com sucesso!${C_RESET}"
+    else
+        echo -e "${C_RED}Foram encontrados erros na execução dos testes.${C_RESET}"
+    fi
+    read -p "Pressione ENTER para voltar ao menu..." dummy
+}
+
 rebuild_docker() {
     check_docker
     clear
@@ -399,18 +415,20 @@ show_menu() {
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}1${C_RESET} - Iniciar Painel de Investimentos (Streamlit)             ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}2${C_RESET} - Reconstruir Imagem Docker (--no-cache)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}3${C_RESET} - Executar Diagnóstico da Carteira Histórica              ${C_CYAN}${C_BOLD}║${C_RESET}"
-    echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}4${C_RESET} - Parar containers (docker compose down)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
-    echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_MAGENTA}5${C_RESET} - 🚀 Deploy no Mini PC (Dockge / Homelab)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}4${C_RESET} - 🧪 Executar Suíte de Testes Automatizados                ${C_CYAN}${C_BOLD}║${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_GREEN}5${C_RESET} - Parar containers (docker compose down)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
+    echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_MAGENTA}6${C_RESET} - 🚀 Deploy no Mini PC (Dockge / Homelab)                  ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}║${C_RESET}  ${C_RED}0${C_RESET} - Sair                                                    ${C_CYAN}${C_BOLD}║${C_RESET}"
     echo -e "${C_CYAN}${C_BOLD}╚══════════════════════════════════════════════════════════════╝${C_RESET}"
     echo ""
-    read -p "Opção [0-5]: " opcao
+    read -p "Opção [0-6]: " opcao
     case "$opcao" in
         1) start_system false ;;
         2) rebuild_docker; show_menu ;;
         3) diagnostico_carteira; show_menu ;;
-        4) stop_system ;;
-        5) deploy_homelab; show_menu ;;
+        4) rodar_testes; show_menu ;;
+        5) stop_system ;;
+        6) deploy_homelab; show_menu ;;
         0) exit 0 ;;
         *) echo -e "${C_RED}Opção inválida.${C_RESET}"; sleep 1; show_menu ;;
     esac
@@ -425,6 +443,9 @@ case "$1" in
         ;;
     --diagnostico|--diag)
         diagnostico_carteira
+        ;;
+    --test|--tests|-t)
+        rodar_testes
         ;;
     --rebuild|-r)
         rebuild_docker
@@ -442,6 +463,7 @@ case "$1" in
         echo "  --start, -s              Inicia o Painel de Investimentos"
         echo "  --build, -b              Reconstrói a imagem e inicia"
         echo "  --diagnostico, --diag    Executa o script de diagnóstico da carteira"
+        echo "  --test, --tests, -t      Executa a suíte de testes automatizados"
         echo "  --rebuild, -r            Reconstrói a imagem Docker (--no-cache)"
         echo "  --down, -d               Para os containers do sistema"
         echo "  --deploy, -dp            Executa deploy no Mini PC (Dockge / Homelab)"

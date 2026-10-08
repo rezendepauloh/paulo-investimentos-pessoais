@@ -10,6 +10,9 @@ if /i "%~1"=="--build" goto :start_build
 if /i "%~1"=="-b" goto :start_build
 if /i "%~1"=="--diagnostico" goto :diagnostico_carteira
 if /i "%~1"=="--diag" goto :diagnostico_carteira
+if /i "%~1"=="--test" goto :rodar_testes
+if /i "%~1"=="--tests" goto :rodar_testes
+if /i "%~1"=="-t" goto :rodar_testes
 if /i "%~1"=="--rebuild" goto :rebuild_docker
 if /i "%~1"=="-r" goto :rebuild_docker
 if /i "%~1"=="--down" goto :stop_system
@@ -30,18 +33,20 @@ echo   Escolha uma opcao:
 echo   1 - Iniciar Painel de Investimentos (Streamlit Dashboard)
 echo   2 - Reconstruir Docker Compose (--no-cache)
 echo   3 - Executar Diagnostico da Carteira Historica
-echo   4 - Parar containers (docker compose down)
-echo   5 - Deploy no Mini PC (Dockge / Homelab via WSL/Bash)
+echo   4 - Executar Suite de Testes Automatizados
+echo   5 - Parar containers (docker compose down)
+echo   6 - Deploy no Mini PC (Dockge / Homelab via WSL/Bash)
 echo   0 - Sair
 echo.
 echo ================================================================
-set /p "OPCAO=Opcao [0-5]: "
+set /p "OPCAO=Opcao [0-6]: "
 
 if "%OPCAO%"=="1" goto :start_system
 if "%OPCAO%"=="2" goto :rebuild_docker
 if "%OPCAO%"=="3" goto :diagnostico_carteira
-if "%OPCAO%"=="4" goto :stop_system
-if "%OPCAO%"=="5" goto :deploy_homelab
+if "%OPCAO%"=="4" goto :rodar_testes
+if "%OPCAO%"=="5" goto :stop_system
+if "%OPCAO%"=="6" goto :deploy_homelab
 if "%OPCAO%"=="0" exit /b 0
 
 echo Opcao invalida.
@@ -132,6 +137,15 @@ echo Executando script de diagnostico da carteira no container...
 %DOCKER_CMD% run --rm app python scripts/diagnostico.py
 echo.
 echo Diagnostico concluido!
+pause
+goto :show_menu
+
+:rodar_testes
+call :setup_docker_and_ip
+cls
+echo Executando Suite de Testes Automatizados no container...
+%DOCKER_CMD% run --rm app python tests/run_all.py
+echo.
 pause
 goto :show_menu
 

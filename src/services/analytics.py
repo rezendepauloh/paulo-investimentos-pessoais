@@ -229,22 +229,31 @@ def calculate_portfolio_holdings(df_orders):
     if df_orders.empty:
         return pd.DataFrame()
         
-    # Ordena ordens cronologicamente, removendo linhas sem data válida
-    df = df_orders.dropna(subset=["data envio"]).sort_values("data envio").copy()
+    # Identifica dinamicamente a coluna de data ('data envio' ou 'Data envio')
+    date_col = "data envio" if "data envio" in df_orders.columns else ("Data envio" if "Data envio" in df_orders.columns else None)
+    if date_col:
+        df = df_orders.dropna(subset=[date_col]).sort_values(date_col).copy()
+    else:
+        df = df_orders.copy()
     if df.empty:
         return pd.DataFrame()
     
     holdings = {}
     
     for _, row in df.iterrows():
-        action = str(row.get("Compra/Venda", "")).strip().upper()
-        ticker = str(row.get("Papel", "")).strip().upper()
+        action = str(row.get("Compra/Venda", row.get("compra_venda", ""))).strip().upper()
+        ticker = str(row.get("Papel", row.get("papel", ""))).strip().upper()
         if not ticker or ticker == "NAN":
             continue
             
-        qty = float(row.get("Qtd Executada", 0))
-        total_spent = float(row.get("Total líquido", 0)) # Contém corretagem embutida
-        price_avg_unit = float(row.get("Preço médio + corretagem", 0))
+        raw_qty = row.get("Qtd Executada", row.get("qtd_executada", 0))
+        qty = float(raw_qty) if raw_qty is not None and not pd.isna(raw_qty) else 0.0
+        
+        raw_spent = row.get("Total líquido", row.get("total_liquido", 0))
+        total_spent = float(raw_spent) if raw_spent is not None and not pd.isna(raw_spent) else 0.0 # Contém corretagem embutida
+        
+        raw_avg = row.get("Preço médio + corretagem", row.get("preco_medio_corretagem", 0))
+        price_avg_unit = float(raw_avg) if raw_avg is not None and not pd.isna(raw_avg) else 0.0
         
         if qty <= 0:
             continue
@@ -255,9 +264,9 @@ def calculate_portfolio_holdings(df_orders):
                 "quantidade": 0.0,
                 "preco_medio": 0.0,
                 "total_investido": 0.0,
-                "tipo": row.get("Tipo", "Ações"),
-                "moeda": row.get("Moeda", "BRL"),
-                "setor_economico": row.get("Setor Econômico", "Outros")
+                "tipo": row.get("Tipo", row.get("tipo", "Ações")),
+                "moeda": row.get("Moeda", row.get("moeda", "BRL")),
+                "setor_economico": row.get("Setor Econômico", row.get("setor_economico", "Outros"))
             }
             
         h = holdings[ticker]
