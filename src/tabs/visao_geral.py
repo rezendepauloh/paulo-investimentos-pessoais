@@ -177,7 +177,9 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         "Visualização da Carteira:",
         ["Hierárquica Integrada (Sunburst)", "Detalhada Lado a Lado (3 Gráficos)"],
         horizontal=True,
-        index=0
+        index=0,
+        label_visibility="collapsed",
+        key="visao_alocacao_view"
     )
     
     if exibicao_alocacao == "Hierárquica Integrada (Sunburst)":
@@ -357,6 +359,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         ["Detalhada Lado a Lado (3 Gráficos)", "Hierárquica de Despesas (Sunburst)"],
         horizontal=True,
         index=0,
+        label_visibility="collapsed",
         key="rec_desp_view"
     )
     
@@ -498,6 +501,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
                 ["Hierárquica Integrada (Sunburst)", "Detalhada Lado a Lado (2 Gráficos)"],
                 horizontal=True,
                 index=0,
+                label_visibility="collapsed",
                 key="custo_vida_view"
             )
             

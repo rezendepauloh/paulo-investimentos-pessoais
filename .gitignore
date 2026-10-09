@@ -8,6 +8,9 @@ credentials.json
 data/credentials.json
 data/*.json
 .streamlit/secrets.toml
+certs/*.crt
+*.crt
+
 
 
 # Python e Ambientes Virtuais

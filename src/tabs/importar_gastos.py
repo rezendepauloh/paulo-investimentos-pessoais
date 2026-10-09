@@ -6,6 +6,11 @@ from typing import Optional
 
 from src.services.deduplication import identify_duplicates
 from src.services.ingestion_parser import parse_ofx, parse_csv, parse_receipt_image
+from src.services.parsers import (
+    parse_bank_file,
+    get_institution_guidelines,
+    UI_INSTITUTION_OPTIONS
+)
 from src.services.pluggy_service import PluggyService
 from src.services.data_loader import append_transactions_to_sheets
 from src.utils.logger import get_logger
@@ -238,8 +243,25 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
     # ABA 2: ARQUIVOS BANCÁRIOS (.OFX / .CSV)
     # ==========================================
     elif selected_slug == "arquivos":
-        st.markdown("##### 📄 Importação de Extratos Bancários")
-        st.write("Importe arquivos exportados do seu banco digital ou tradicional nos formatos `.ofx` ou `.csv` (Sicredi, Nubank, Itaú, etc.).")
+        st.markdown("##### 📄 Importação de Extratos Bancários por Instituição")
+        st.write("Importe arquivos exportados do seu banco digital ou tradicional nos formatos `.ofx` ou `.csv` com regras específicas de interpretação.")
+
+        # Seletor de Instituição Financeira
+        col_inst_sel, col_inst_info = st.columns([1.5, 2.5])
+        with col_inst_sel:
+            labels = [opt[0] for opt in UI_INSTITUTION_OPTIONS]
+            keys = [opt[1] for opt in UI_INSTITUTION_OPTIONS]
+            selected_inst_idx = st.selectbox(
+                "🏦 Instituição Financeira / Origem",
+                range(len(labels)),
+                format_func=lambda i: labels[i],
+                key="select_bank_institution"
+            )
+            selected_inst_key = keys[selected_inst_idx]
+
+        with col_inst_info:
+            guideline_text = get_institution_guidelines(selected_inst_key)
+            st.info(f"💡 **Dica de Exportação:** {guideline_text}")
 
         uploaded_bank_files = st.file_uploader(
             "Selecione arquivos .OFX ou .CSV",
@@ -254,15 +276,16 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
 
         if btn_proc_files and uploaded_bank_files:
             all_extracted_files = []
-            with st.spinner("Decodificando extratos e normalizando dados..."):
+            with st.spinner("Decodificando extratos e normalizando dados com regras da instituição..."):
                 for b_file in uploaded_bank_files:
                     try:
                         bytes_data = b_file.read()
                         fname = b_file.name
-                        if fname.lower().endswith(".ofx"):
-                            df_parsed = parse_ofx(bytes_data, filename=fname)
-                        else:
-                            df_parsed = parse_csv(bytes_data, filename=fname)
+                        df_parsed = parse_bank_file(
+                            file_bytes=bytes_data,
+                            filename=fname,
+                            institution_key=selected_inst_key
+                        )
 
                         if not df_parsed.empty:
                             all_extracted_files.append(df_parsed)

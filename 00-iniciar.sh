@@ -77,7 +77,7 @@ load_env_file() {
             PORT="$env_port"
         fi
     fi
-    PORT="${PORT:-8503}"
+    PORT="${PORT:-8502}"
     export PORT="$PORT"
     export STREAMLIT_PORT="$PORT"
 }

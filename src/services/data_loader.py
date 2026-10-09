@@ -293,7 +293,7 @@ def get_all_budget_spreadsheets() -> dict[str, str]:
 
 import time
 
-@st.cache_data(ttl=600)  # Cache de 10 minutos para não estourar cota do Sheets
+@st.cache_data(ttl=600, show_spinner=False)  # Cache de 10 minutos para não estourar cota do Sheets
 def load_sheet_data(spreadsheet_id, sheet_name, max_retries=3):
     """
     Carrega os dados de uma aba específica de uma planilha como um DataFrame do Pandas.

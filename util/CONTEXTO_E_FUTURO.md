@@ -109,19 +109,33 @@ src/services/parsers/
 
 ---
 
-## 4. Próximos Passos no Roadmap
+## 4. Status de Implementação e Roadmap
 
-1. **Fase 1 (Estruturação Base):**
-   - Criação da pasta de parsers dedicados com a interface `BaseBankParser`.
-   - Adição do componente de seleção de banco no `src/tabs/importar_gastos.py`.
+### 4.1. Status Atual (Concluído ✅)
+- [x] **Arquitetura Base**: Implementado `src/services/parsers/base_parser.py` e contrato `BaseBankParser`.
+- [x] **Dispatcher Central**: Implementado `src/services/parsers/__init__.py` com `parse_bank_file()`, registry central e fallback seguro para `GenericBankParser`.
+- [x] **UI com Seleção Visual e Dicas Contextuais**: Adicionado seletor de instituição bancária com caixas de orientações dinâmicas em `src/tabs/importar_gastos.py`.
+- [x] **Parsers Consolidados Prontos**:
+  - `SicrediParser` (`src/services/parsers/sicredi_parser.py`): Delimitador `;`, codificação latin-1/windows-1252, sanitização de prefixos operacionais (`PIX ENVIADO`, `COMPRA CARTAO DEB`), normalização automática de Conta = 'Sicredi'.
+  - `NubankParser` (`src/services/parsers/nubank_parser.py`): Suporte a extratos de fatura de cartão (`date`, `category`, `title`, `amount`), inversão de sinal para pagamentos/estornos e Conta = 'Nubank'.
+  - `InterParser` (`src/services/parsers/inter_parser.py`): Extratos CSV e OFX com atribuição para Banco Inter.
+  - `GenericBankParser` (`src/services/parsers/generic_parser.py`): Fallback universal inteligente com regex e IA.
+- [x] **Módulos Estruturais Prontos (Esqueleto para evolução gradativa)**:
+  - `C6BankParser` (`src/services/parsers/c6_parser.py`)
+  - `XPParser` (`src/services/parsers/xp_parser.py`)
+  - `MercadoPagoParser` (`src/services/parsers/mercadopago_parser.py`)
+  - `Pay99Parser` (`src/services/parsers/pay99_parser.py`)
+- [x] **Carregamento Assíncrono & Accordion de Logs (Padrão Bancada)**:
+  - Implementado `src/services/async_tasks.py` para execução não-bloqueante em background thread com tracking de logs e tempo.
+  - Criado `src/components/status_banner.py` (`render_async_task_expander`) com auto-refresh suave a cada 2s via `@st.fragment` e notificação `st.toast` ao concluir.
+  - Sincronização de Google Sheets na Sidebar e reconstrução pesada de rentabilidade histórica (10 anos / BCB) desacopladas da abertura inicial, permitindo uso 100% imediato e responsivo da Visão Geral e demais abas.
 
-2. **Fase 2 (Implementação das Instituições Prioritárias):**
-   - Criação dos parsers dedicados para os bancos principais utilizados no dia a dia (Sicredi e Banco Inter).
-   - Inclusão de testes unitários para cada parser bancário em `tests/unit/test_bank_parsers.py`.
+### 4.2. Próximos Passos de Evolução Gradativa
+1. **Faturas Parceladas C6 Bank**:
+   - Tratamento detalhado de parcelas em texto `(01/10)` e conversão de cotação de compras internacionais em dólar.
+2. **Extratos de Proventos e Corretagem XP**:
+   - Roteamento inteligente de notas de corretagem B3 e proventos creditados direto para a tabela `dividendos`.
+3. **Prompts Especializados de OCR Multimodal (Gemini Vision)**:
+   - Injeção de instruções contextuais específicas no prompt da IA conforme o banco selecionado na aba de comprovantes.
 
-3. **Fase 3 (Extensão para Faturas de Cartão e Corretoras):**
-   - Módulos para C6, XP e Nubank.
-   - Suporte a extratos de proventos automatizados diretamente para a tabela `dividendos`.
 
-4. **Fase 4 (Prompts Especializados de OCR Multimodal):**
-   - Refinamento do prompt do Gemini Vision por banco selecionado para aumentar a taxa de acerto de 95% para 99% na leitura de comprovantes e faturas em imagem.

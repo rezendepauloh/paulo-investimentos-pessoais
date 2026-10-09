@@ -16,6 +16,8 @@ services:
       - STREAMLIT_SERVER_HEADLESS=true
       - TZ=America/Campo_Grande
       - HOST_IP=${HOST_IP:-localhost}
+      - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+      - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     volumes:
       - .:/app
       - /app/__pycache__

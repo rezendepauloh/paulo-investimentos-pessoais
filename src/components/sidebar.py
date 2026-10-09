@@ -125,15 +125,27 @@ def _render_sidebar_visao_geral(df_holdings, df_orders, df_receitas, df_despesas
     last_sync = db_manager.get_last_sync_time()
     st.caption(f"🕒 Última sinc: **{last_sync if last_sync else 'Nunca'}**")
     
-    if st.button("🔄 Sincronizar Sheets", use_container_width=True, type="primary"):
-        with st.spinner("Atualizando dados do Google Sheets..."):
-            try:
+    from src.services.async_tasks import start_background_task, is_task_running
+    sync_rodando = is_task_running("sync_sheets_background")
+    
+    if sync_rodando:
+        st.button("⏳ Sincronizando Sheets...", disabled=True, use_container_width=True, key="btn_sync_sheets_running")
+    else:
+        if st.button("🔄 Sincronizar Sheets", use_container_width=True, type="primary", key="btn_sync_sheets_start"):
+            def _sync_worker():
                 sync_google_sheets_to_sqlite()
-                st.cache_data.clear()
-                st.success("✅ Atualizado com sucesso!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro: {e}")
+                # Limpa cache do streamlit
+                from src.services.analytics import clear_bcb_cache
+                clear_bcb_cache()
+
+            start_background_task(
+                "sync_sheets_background",
+                _sync_worker,
+                task_label="Sincronização Google Sheets"
+            )
+            st.toast("🚀 Sincronização iniciada em segundo plano!", icon="🔄")
+            st.rerun()
+
 
 
 def _render_sidebar_desempenho(df_perf):

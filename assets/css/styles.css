@@ -244,7 +244,8 @@ section[data-testid='stSidebar'] {
 
 /* Container horizontal das abas */
 div[data-testid='stRadio'] > div[role='radiogroup'],
-div[data-testid='stRadioGroup'] {
+div[data-testid='stRadioGroup'],
+div[data-testid='stRadio'] [role='radiogroup'] {
   display: flex !important;
   flex-direction: row !important;
   gap: 24px !important;
@@ -253,30 +254,29 @@ div[data-testid='stRadioGroup'] {
   margin-bottom: 20px !important;
 }
 
-/* Oculta as bolinhas nativas do radio (suporta classes do Windows, Linux e seletores estruturais universais) */
+/* Oculta as bolinhas nativas do radio (Streamlit legado e moderno React-Aria) */
 div[class*='etak9234'],
 div[class*='etak9235'],
-div[data-testid='stRadio']
-  label
-  > div:first-child:not([data-testid='stMarkdownContainer']),
-div[data-testid='stRadioGroup']
-  label
-  > div:first-child:not([data-testid='stMarkdownContainer']),
-label[data-testid='stRadioOption']
-  > div:first-child:not([data-testid='stMarkdownContainer']),
-label[data-baseweb='radio']
-  > div:first-child:not([data-testid='stMarkdownContainer']),
+div[data-testid='stRadio'] label > div:first-child:not([data-testid='stMarkdownContainer']),
+div[data-testid='stRadioGroup'] label > div:first-child:not([data-testid='stMarkdownContainer']),
+label[data-testid='stRadioOption'] > div:first-child:not([data-testid='stMarkdownContainer']),
+label[data-baseweb='radio'] > div:first-child:not([data-testid='stMarkdownContainer']),
 div[data-testid='stRadio'] label > div[aria-hidden='true'],
 div[data-testid='stRadioGroup'] label > div[aria-hidden='true'],
 div[data-testid='stRadio'] input[type='radio'],
-div[data-testid='stRadioGroup'] input[type='radio'] {
+div[data-testid='stRadioGroup'] input[type='radio'],
+label[data-testid='stRadioOption'] span:has(input[type='radio']),
+label[data-testid='stRadioOption'] > div > div:first-child:not([data-testid='stMarkdownContainer']),
+label[data-testid='stRadioOption'] div[class*='e1dm8mpf4'],
+label[data-testid='stRadioOption'] div[class*='e1dm8mpf5'] {
   display: none !important;
 }
 
-/* Estilo do texto inativo (simulando a aba não selecionada) */
+/* Estilo do item inativo (simulando a aba não selecionada) */
 div[data-testid='stRadio'] > div[role='radiogroup'] > label,
 div[data-testid='stRadioGroup'] > label,
-label[data-testid='stRadioOption'] {
+label[data-testid='stRadioOption'],
+div[data-testid='stRadio'] div[data-rac] > label {
   background: transparent !important;
   border: none !important;
   border-bottom: 2px solid transparent !important;
@@ -285,6 +285,7 @@ label[data-testid='stRadioOption'] {
   color: #b0b0b0 !important;
   cursor: pointer !important;
   margin: 0 !important;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 div[data-testid='stRadio'] div[data-testid='stMarkdownContainer'] p,
@@ -297,13 +298,15 @@ div[data-testid='stRadioGroup'] div[data-testid='stMarkdownContainer'] p {
 /* Hover leve */
 div[data-testid='stRadio'] > div[role='radiogroup'] > label:hover,
 div[data-testid='stRadioGroup'] > label:hover,
-label[data-testid='stRadioOption']:hover {
+label[data-testid='stRadioOption']:hover,
+div[data-testid='stRadio'] div[data-rac] > label:hover {
   color: #ff4b4b !important;
 }
 
-/* Aba Ativa (Linha vermelha indicadora) */
-label[data-testid='stRadioOption']:has(input:checked),
+/* Aba Ativa (Linha vermelha indicadora estritamente no selecionado) */
+div[data-testid='stRadio'] div[data-selected='true'] > label[data-testid='stRadioOption'],
 label[data-testid='stRadioOption'][data-selected='true'],
+label[data-testid='stRadioOption']:has(input:checked),
 label[data-testid='stRadioOption'][aria-checked='true'],
 label[data-testid='stRadioOption']:has(input[checked]),
 div[data-testid='stRadio'] > div[role='radiogroup'] > label:has(input:checked),
@@ -312,3 +315,20 @@ div[data-testid='stRadioGroup'] > label:has(input:checked) {
   border-bottom: 2px solid #ff4b4b !important;
   font-weight: 600 !important;
 }
+
+/* Garante que se o container externo tiver data-selected="true", apenas a label do selecionado pegue borda */
+div[data-testid='stRadio'] div[data-rac]:not([data-selected='true']) > label[data-testid='stRadioOption'] {
+  border-bottom: 2px solid transparent !important;
+  color: #b0b0b0 !important;
+  font-weight: 400 !important;
+}
+
+/* Oculta os spinners e avisos nativos intrusivos do Streamlit ("Running ...") */
+[data-testid='stStatusWidget'],
+div[data-testid='stStatusWidget'],
+.stStatusWidget {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+

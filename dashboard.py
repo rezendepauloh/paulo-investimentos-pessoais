@@ -77,14 +77,67 @@ else:
         df_orders = get_orders_data(use_mock=True)
         use_mock = True
 
-# Cálculo de Carteira e Performance
+# -----------------------------------------------------------------------------
+# CÁLCULO DE CARTEIRA E PERFORMANCE (ASSÍNCRONO & SOB DEMANDA)
+# -----------------------------------------------------------------------------
 df_holdings = pd.DataFrame()
 df_perf = pd.DataFrame()
 
 if not df_orders.empty:
-    with st.spinner("Calculando posições em tempo real..."):
-        df_holdings = calculate_portfolio_holdings(df_orders)
-        df_perf = get_historical_performance(df_orders)
+    # 1. Holdings da Carteira (em session_state para não recalcular a cada troca de aba ou filtro)
+    if "df_holdings" in st.session_state and not st.session_state["df_holdings"].empty:
+        df_holdings = st.session_state["df_holdings"]
+    else:
+        try:
+            df_holdings = calculate_portfolio_holdings(df_orders)
+            st.session_state["df_holdings"] = df_holdings
+        except Exception as e:
+            logger.error(f"Erro ao calcular posições da carteira: {e}")
+            df_holdings = pd.DataFrame()
+
+    # 2. Performance Histórica (TWR diário + benchmarks BCB/Yahoo):
+    # Se o usuário estiver na aba Desempenho ou ela já estiver em cache, calcula/recupera;
+    # Caso contrário, dispara em background thread para não travar a abertura inicial do painel.
+    is_desempenho_page = (current_page in ["desempenho", "📈 Desempenho e Benchmarks"])
+    
+    from src.services.async_tasks import (
+        start_background_task,
+        is_task_running,
+        get_task_result
+    )
+
+    perf_result = get_task_result("calculo_performance")
+    if perf_result is not None and not perf_result.empty:
+        df_perf = perf_result
+    elif is_desempenho_page:
+        # Se o usuário estiver na própria aba de desempenho, executa e armazena
+        with st.spinner("Reconstruindo série histórica de rentabilidade diária (TWR)..."):
+            try:
+                df_perf = get_historical_performance(df_orders)
+            except Exception as e:
+                logger.error(f"Erro ao calcular performance: {e}")
+                df_perf = pd.DataFrame()
+    else:
+        # Pré-carrega em background thread sem bloquear a navegação
+        start_background_task(
+            "calculo_performance",
+            get_historical_performance,
+            args=(df_orders,),
+            task_label="Cálculo da Série Temporal e Benchmarks"
+        )
+
+# Renderiza Accordion de Tarefas Assíncronas se houver processamento em segundo plano
+from src.components.status_banner import render_async_task_expander
+render_async_task_expander(
+    "calculo_performance",
+    title="🤖 Reconstrução de Rentabilidade & Benchmarks em Segundo Plano",
+    info_text="O cálculo da série histórica de 10 anos e consulta ao Banco Central está rodando em segundo plano. Você pode continuar usando o painel livremente!"
+)
+render_async_task_expander(
+    "sync_sheets_background",
+    title="🔄 Sincronização do Google Sheets em Segundo Plano",
+    info_text="Os dados das planilhas estão sendo atualizados no SQLite em segundo plano. O painel permanece desbloqueado!"
+)
 
 # Renderiza Sidebar Contextual da Página Ativa
 render_sidebar(

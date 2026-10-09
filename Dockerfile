@@ -8,7 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     TZ=America/Campo_Grande \
     PIP_DEFAULT_TIMEOUT=120 \
     PIP_TRUSTED_HOST="pypi.org pypi.python.org files.pythonhosted.org github.com github-releases.githubusercontent.com objects.githubusercontent.com release-assets.githubusercontent.com raw.githubusercontent.com github-production-release-asset-2e65be.s3.amazonaws.com github-cloud.s3.amazonaws.com" \
-    NODE_TLS_REJECT_UNAUTHORIZED=0
+    NODE_TLS_REJECT_UNAUTHORIZED=0 \
+    REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 WORKDIR /app
 
@@ -22,6 +24,13 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Se existirem certificados adicionais (ex: corporativos / proxy / MP), instala no sistema e Python
+COPY certs* /tmp/certs/
+RUN if [ -d /tmp/certs ] && [ -n "$(ls -A /tmp/certs 2>/dev/null)" ]; then \
+        cp /tmp/certs/*.crt /usr/local/share/ca-certificates/ 2>/dev/null || true; \
+        update-ca-certificates; \
+    fi && rm -rf /tmp/certs
 
 # Configura arquivo global do pip para confiar nos domínios corporativos e CDNs
 RUN mkdir -p /etc /root/.pip \

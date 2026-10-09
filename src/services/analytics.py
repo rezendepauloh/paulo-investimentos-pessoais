@@ -12,7 +12,7 @@ from src.utils.logger import get_logger
 logger = get_logger("services", "analytics")
 
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
     """
     Busca a taxa CDI diária (Série 12 do SGS/BCB) no intervalo de datas,
@@ -56,7 +56,7 @@ def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
     fator = (1.0 + daily_rate) ** np.arange(1, len(dates) + 1)
     return pd.Series(fator, index=dates)
 
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
     """
     Busca o IPCA mensal (Série 433 do SGS/BCB) no intervalo de datas,
@@ -151,7 +151,7 @@ def normalize_ticker(ticker: str):
         
     return t
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_current_prices(tickers, ticker_types=None):
     """
     Obtém a cotação atual (tempo real) para uma lista de tickers usando yfinance.
@@ -194,7 +194,7 @@ def get_current_prices(tickers, ticker_types=None):
         
     return prices
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_usd_brl_rate():
     """
     Obtém a taxa de câmbio atual de USD para BRL usando yfinance.
@@ -220,7 +220,7 @@ def get_usd_brl_rate():
         logger.warning(f"Não foi possível obter a taxa de câmbio USD/BRL: {e}")
     return 5.0  # Fallback razoável
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def calculate_portfolio_holdings(df_orders):
     """
     Calcula a carteira atualizada de investimentos com base no histórico de ordens.
@@ -365,7 +365,7 @@ def calculate_portfolio_holdings(df_orders):
     
     return df_holdings
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=600, show_spinner=False)
 def get_historical_performance(df_orders):
     """
     Reconstrói a série temporal da carteira dia a dia e calcula os retornos acumulados.
