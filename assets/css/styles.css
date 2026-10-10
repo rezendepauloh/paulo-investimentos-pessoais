@@ -254,22 +254,42 @@ div[data-testid='stRadio'] [role='radiogroup'] {
   margin-bottom: 20px !important;
 }
 
-/* Oculta as bolinhas nativas do radio (Streamlit legado e moderno React-Aria) */
+/* Oculta as bolinhas nativas do radio (Streamlit legado, 1.63 e 1.64+) */
 div[class*='etak9234'],
 div[class*='etak9235'],
-div[data-testid='stRadio'] label > div:first-child:not([data-testid='stMarkdownContainer']),
-div[data-testid='stRadioGroup'] label > div:first-child:not([data-testid='stMarkdownContainer']),
-label[data-testid='stRadioOption'] > div:first-child:not([data-testid='stMarkdownContainer']),
-label[data-baseweb='radio'] > div:first-child:not([data-testid='stMarkdownContainer']),
+div[class*='eqiohyi4'],
+div[class*='eqiohyi5'],
+div[class*='e1mpz0hj4'],
+div[class*='e1mpz0hj5'],
+div[class*='e1dm8mpf4'],
+div[class*='e1dm8mpf5'],
+div[data-testid='stRadio'] label[data-baseweb='radio'] > div:first-child:not([data-testid='stMarkdownContainer']),
+div[data-testid='stRadio'] label div:has(+ [data-testid='stMarkdownContainer']),
 div[data-testid='stRadio'] label > div[aria-hidden='true'],
-div[data-testid='stRadioGroup'] label > div[aria-hidden='true'],
-div[data-testid='stRadio'] input[type='radio'],
-div[data-testid='stRadioGroup'] input[type='radio'],
-label[data-testid='stRadioOption'] span:has(input[type='radio']),
-label[data-testid='stRadioOption'] > div > div:first-child:not([data-testid='stMarkdownContainer']),
-label[data-testid='stRadioOption'] div[class*='e1dm8mpf4'],
-label[data-testid='stRadioOption'] div[class*='e1dm8mpf5'] {
+div[data-testid='stRadioGroup'] label > div[aria-hidden='true'] {
   display: none !important;
+}
+
+/* Oculta o input radio visualmente preservando o estado :checked */
+div[data-testid='stRadio'] input[type='radio'],
+div[data-testid='stRadioGroup'] input[type='radio'] {
+  position: absolute !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Garante que o texto das abas NUNCA seja ocultado */
+div[data-testid='stRadio'] [data-testid='stMarkdownContainer'],
+div[data-testid='stRadioGroup'] [data-testid='stMarkdownContainer'],
+div[data-testid='stRadio'] [data-testid='stMarkdownContainer'] p,
+div[data-testid='stRadioGroup'] [data-testid='stMarkdownContainer'] p {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 /* Estilo do item inativo (simulando a aba não selecionada) */
@@ -304,23 +324,27 @@ div[data-testid='stRadio'] div[data-rac] > label:hover {
 }
 
 /* Aba Ativa (Linha vermelha indicadora estritamente no selecionado) */
-div[data-testid='stRadio'] div[data-selected='true'] > label[data-testid='stRadioOption'],
+div[data-testid='stRadio'] [data-selected='true'],
+div[data-testid='stRadio'] [data-selected],
 label[data-testid='stRadioOption'][data-selected='true'],
+label[data-testid='stRadioOption'][data-selected],
 label[data-testid='stRadioOption']:has(input:checked),
 label[data-testid='stRadioOption'][aria-checked='true'],
 label[data-testid='stRadioOption']:has(input[checked]),
 div[data-testid='stRadio'] > div[role='radiogroup'] > label:has(input:checked),
-div[data-testid='stRadioGroup'] > label:has(input:checked) {
+div[data-testid='stRadioGroup'] > label:has(input:checked),
+div[data-testid='stRadio'] > div[role='radiogroup'] > label[data-selected],
+div[data-testid='stRadioGroup'] > label[data-selected] {
   color: #ff4b4b !important;
   border-bottom: 2px solid #ff4b4b !important;
   font-weight: 600 !important;
 }
 
-/* Garante que se o container externo tiver data-selected="true", apenas a label do selecionado pegue borda */
-div[data-testid='stRadio'] div[data-rac]:not([data-selected='true']) > label[data-testid='stRadioOption'] {
-  border-bottom: 2px solid transparent !important;
-  color: #b0b0b0 !important;
-  font-weight: 400 !important;
+div[data-testid='stRadio'] [data-selected='true'] [data-testid='stMarkdownContainer'] p,
+div[data-testid='stRadio'] [data-selected] [data-testid='stMarkdownContainer'] p,
+label[data-testid='stRadioOption']:has(input:checked) [data-testid='stMarkdownContainer'] p {
+  color: #ff4b4b !important;
+  font-weight: 600 !important;
 }
 
 /* Oculta os spinners e avisos nativos intrusivos do Streamlit ("Running ...") */

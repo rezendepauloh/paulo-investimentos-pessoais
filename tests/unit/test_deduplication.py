@@ -77,5 +77,54 @@ class TestDeduplication(unittest.TestCase):
         self.assertEqual(resultado.loc[0, "Status"], "⚠️ Duplicado")
         self.assertEqual(resultado.loc[1, "Status"], "Novo")
 
+    def test_identify_internal_transfer_and_bill_payment(self):
+        df_batch = pd.DataFrame([
+            {"Data": "2026-09-22", "Valor": 3958.09, "Descricao": "Pix recebido - Paulo Henrique Goncalves Rezende", "Categoria": "Transferência Interna"},
+            {"Data": "2026-09-22", "Valor": 3958.09, "Descricao": "Pagamento Fatura - PAULO HENRIQUE GONCALVES REZENDE", "Categoria": "Outros"},
+            {"Data": "2026-09-23", "Valor": 50.0, "Descricao": "Posto Shell", "Categoria": "Combustível"}
+        ])
+
+        resultado = identify_duplicates(df_batch)
+        # Pix de mesma titularidade
+        self.assertEqual(resultado.loc[0, "Status"], "🔄 Transf. Interna")
+        self.assertFalse(resultado.loc[0, "Importar"])
+
+        # Pagamento de fatura
+        self.assertEqual(resultado.loc[1, "Status"], "📄 Pgto Fatura")
+        self.assertFalse(resultado.loc[1, "Importar"])
+
+    def test_identify_proventos_duplicate_against_existing_b3(self):
+        # Transações já gravadas (vindas da B3)
+        df_existentes = pd.DataFrame([
+            {"Data": "2026-09-01", "Valor": 2.61, "Descricao": "ITUB3 - JCP", "Categoria": "Juros sobre Capital Próprio"},
+            {"Data": "2026-09-02", "Valor": 57.05, "Descricao": "FLRY3 - Dividendo", "Categoria": "Dividendo BR"},
+            {"Data": "2026-09-28", "Valor": 144.81, "Descricao": "FLRY3 - Reembolso", "Categoria": "Juros sobre Capital Próprio"}
+        ])
+
+        # Novos registros vindo do extrato bancário (descrição do banco ligeiramente diferente)
+        df_novos_banco = pd.DataFrame([
+            {"Data": "2026-09-01", "Valor": 2.61, "Descricao": "ITUB3 - Juros S/capital 174", "Categoria": "Juros sobre Capital Próprio", "Tipo": "Receita"},
+            {"Data": "2026-09-02", "Valor": 57.05, "Descricao": "FLRY3 - Dividendos 438", "Categoria": "Dividendo BR", "Tipo": "Receita"},
+            {"Data": "2026-09-28", "Valor": 144.81, "Descricao": "FLRY3 - Reembolso Jcp - Aluguel", "Categoria": "Juros sobre Capital Próprio", "Tipo": "Receita"},
+            {"Data": "2026-09-29", "Valor": 25.00, "Descricao": "Pix enviado - Amigo Restaurante", "Categoria": "Alimentação", "Tipo": "Despesa"}
+        ])
+
+        resultado = identify_duplicates(df_novos_banco, existentes_df=df_existentes)
+
+        # Proventos do banco devem ser identificados como duplicados com Importar=False
+        self.assertEqual(resultado.loc[0, "Status"], "⚠️ Duplicado")
+        self.assertFalse(resultado.loc[0, "Importar"])
+
+        self.assertEqual(resultado.loc[1, "Status"], "⚠️ Duplicado")
+        self.assertFalse(resultado.loc[1, "Importar"])
+
+        self.assertEqual(resultado.loc[2, "Status"], "⚠️ Duplicado")
+        self.assertFalse(resultado.loc[2, "Importar"])
+
+        # Pix comum para outra pessoa continua Novo e Importar=True
+        self.assertEqual(resultado.loc[3, "Status"], "Novo")
+        self.assertTrue(resultado.loc[3, "Importar"])
+
 if __name__ == '__main__':
     unittest.main()
+
