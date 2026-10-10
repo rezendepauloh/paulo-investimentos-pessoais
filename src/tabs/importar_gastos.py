@@ -36,6 +36,7 @@ CATEGORIAS_RECEITAS = [
     "Rendimento Renda Fixa",
     "Dividendo BR",
     "Aluguel Ações EUA",
+    "Transferência Interna",
     "Outros"
 ]
 
@@ -65,6 +66,7 @@ CATEGORIAS_DESPESAS = [
     "Táxi / Uber",
     "Vestuário",
     "Água",
+    "Transferência Interna",
     "Outros"
 ]
 
@@ -264,8 +266,8 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
             st.info(f"💡 **Dica de Exportação:** {guideline_text}")
 
         uploaded_bank_files = st.file_uploader(
-            "Selecione arquivos .OFX ou .CSV",
-            type=["ofx", "csv", "txt"],
+            "Selecione arquivos .OFX, .CSV, .XLSX (B3) ou .PDF (Fatura)",
+            type=["ofx", "csv", "xlsx", "xls", "pdf", "txt"],
             accept_multiple_files=True,
             key="uploader_bank_files"
         )
@@ -305,18 +307,51 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
                 if "Essencial vs. Não Essencial" not in df_novos_files.columns:
                     df_novos_files["Essencial vs. Não Essencial"] = "Essencial"
 
-                # Desmarca automaticamente por padrão pagamentos de fatura ou transferências internas para evitar duplicidade
-                if "Importar" in df_novos_files.columns:
-                    for idx, row in df_novos_files.iterrows():
-                        d_low = str(row.get("Descricao", "")).lower()
-                        if any(k in d_low for k in ["pagamento fatura", "pgto fatura", "fatura cartao", "fatura cartão", "pagamento de cartao", "pagamento de cartão"]):
-                            df_novos_files.at[idx, "Importar"] = False
-
                 df_novos_files = identify_duplicates(df_novos_files, df_existentes_total)
-                st.session_state.df_staging_transactions = pd.concat(
-                    [st.session_state.df_staging_transactions, df_novos_files], ignore_index=True
-                ).drop_duplicates(subset=["Hash"], keep="last")
-                st.success(f"🎉 {len(df_novos_files)} lançamentos importados dos extratos bancários!")
+
+                # ========================================================
+                # Reconciliação / Enriquecimento Inteligente B3 vs. Bancos
+                # ========================================================
+                # Se houver registros da B3 ou notas genéricas de aluguel/proventos, reconcilia
+                df_staging_atual = st.session_state.df_staging_transactions
+                combined_pool = pd.concat([df_staging_atual, df_novos_files], ignore_index=True)
+
+                # 1. Encontra registros da B3 com tickers (tanto no lote atual quanto nos já persistidos)
+                pool_para_busca = [combined_pool]
+                if df_existentes_total is not None and not df_existentes_total.empty:
+                    pool_para_busca.append(df_existentes_total)
+                reference_pool = pd.concat(pool_para_busca, ignore_index=True)
+
+                b3_tickers = reference_pool[
+                    (reference_pool.get("Tipo", "Receita") == "Receita") &
+                    (reference_pool["Descricao"].str.contains(r'^[A-Z]{4}[0-9]{1,2}\s*-', regex=True, na=False))
+                ]
+
+                if not b3_tickers.empty:
+                    # Percorre o pool procurando notas genéricas de aluguel ou proventos não discriminados
+                    for idx, row in combined_pool.iterrows():
+                        d_text = str(row.get("Descricao", "")).lower()
+                        dt_val = row.get("Data")
+                        v_val = float(row.get("Valor", 0.0))
+                        
+                        # Se for uma nota genérica de aluguel (ex: 'Nota De Aluguel - 28/09/2026')
+                        if "nota de aluguel" in d_text:
+                            # Procura se temos os proventos discriminados da B3 para a mesma data ou valor aproximado
+                            same_date_b3 = b3_tickers[b3_tickers["Data"] == dt_val]
+                            if not same_date_b3.empty:
+                                # A B3 já traz os ativos individuais detalhados: desmarca a nota genérica para evitar duplicidade
+                                combined_pool.at[idx, "Importar"] = False
+                                combined_pool.at[idx, "Status"] = "🔄 B3 Detalhado"
+                            else:
+                                # Se não tem na mesma data exata, tenta encontrar pelo valor exato
+                                same_val_b3 = b3_tickers[abs(b3_tickers["Valor"] - v_val) < 0.001]
+                                if not same_val_b3.empty:
+                                    t_desc = same_val_b3.iloc[0]["Descricao"]
+                                    combined_pool.at[idx, "Descricao"] = t_desc
+                                    combined_pool.at[idx, "Status"] = "✨ Enriquecido B3"
+
+                st.session_state.df_staging_transactions = combined_pool.drop_duplicates(subset=["Hash"], keep="last")
+                st.success(f"🎉 {len(df_novos_files)} lançamentos importados e reconciliados com sucesso!")
                 st.rerun()
 
     # ==========================================
@@ -459,7 +494,13 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
         delta_str = None
         delta_color = "off"
 
-    mcol1, mcol2, mcol3, mcol4 = st.columns(4)
+    # Itens neutros identificados
+    qtd_transf_internas = len(df_staging[df_staging["Status"].str.contains("Transf", na=False)])
+    qtd_faturas = len(df_staging[df_staging["Status"].str.contains("Fatura", na=False)])
+    qtd_b3_detalhado = len(df_staging[df_staging["Status"].str.contains("B3 Detalhado", na=False)])
+    total_neutros = qtd_transf_internas + qtd_faturas + qtd_b3_detalhado
+
+    mcol1, mcol2, mcol3, mcol4, mcol5 = st.columns(5)
     mcol1.metric("Total na Fila", total_itens, help="Total de itens carregados para revisão.")
     mcol2.metric("🟢 Receitas Previstas", format_currency_br(receitas_previstas), help="Soma das receitas selecionadas para importação.")
     mcol3.metric("🔴 Despesas Previstas", format_currency_br(despesas_previstas), help="Soma das despesas selecionadas para importação.")
@@ -471,6 +512,11 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
         delta=delta_str,
         delta_color=delta_color,
         help="Receitas Previstas menos Despesas Previstas dos itens selecionados."
+    )
+    mcol5.metric(
+        "🔄 Neutros / Conciliados",
+        total_neutros,
+        help=f"Transações desmarcadas por padrão: {qtd_transf_internas} transf. internas, {qtd_faturas} faturas e {qtd_b3_detalhado} notas genéricas substituídas pelos ativos detalhados da B3."
     )
 
     # Editor Interativo de Dados com Tipagem Compatível e Todas as Colunas de Schema

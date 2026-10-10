@@ -885,8 +885,20 @@ def get_budget_data(use_mock=False, _is_retry=False):
             # Deriva df_dividendos dinamicamente a partir das receitas categorizadas como proventos
             if not df_receitas.empty and "Categoria" in df_receitas.columns:
                 df_dividendos = df_receitas[df_receitas["Categoria"].isin(CATEGORIAS_PROVENTOS)].copy()
-                if "Ativo" not in df_dividendos.columns:
-                    df_dividendos["Ativo"] = df_dividendos["Nome"]
+                
+                def _derive_asset_symbol(row):
+                    nome = str(row.get("Nome", "")).strip()
+                    # 1. Tenta extrair ticker padrão (ex: AZZA3, FLRY3, KNRI11, ITUB3)
+                    m = re.search(r'\b([A-Z]{4}[0-9]{1,2})\b', nome.upper())
+                    if m:
+                        return m.group(1)
+                    # 2. Se for nota de aluguel sem ticker
+                    if "aluguel" in nome.lower():
+                        return "Aluguel B3 (Geral)"
+                    # 3. Fallback para o próprio nome ou 'Outros'
+                    return nome if nome else "Outros"
+
+                df_dividendos["Ativo"] = df_dividendos.apply(_derive_asset_symbol, axis=1)
             else:
                 df_dividendos = pd.DataFrame(columns=["Nome", "Valor", "Ativo", "Categoria", "Recebido em", "Dias até"])
                 

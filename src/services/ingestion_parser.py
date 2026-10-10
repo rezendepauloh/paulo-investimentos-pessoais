@@ -73,6 +73,12 @@ MAPA_CATEGORIAS_DESPESAS = {
     "steam": "Games",
     "condomínio": "Condomínio",
     "condominio": "Condomínio",
+    "transferencia interna": "Transferência Interna",
+    "transferência interna": "Transferência Interna",
+    "mesma titularidade": "Transferência Interna",
+    "entre contas": "Transferência Interna",
+    "conta propria": "Transferência Interna",
+    "conta própria": "Transferência Interna",
 }
 
 CATEGORIAS_VALIDAS_DESPESAS = [
@@ -80,7 +86,7 @@ CATEGORIAS_VALIDAS_DESPESAS = [
     "Escola/Faculdade", "Estacionamento", "Eventos", "Games", "Hotel", "Internet",
     "Lanches", "Luz", "Medicamentos", "Médicos e terapeutas", "Presentes", "Restaurante",
     "Salão de beleza", "Serviços / Manutenção", "Streaming", "Supermercado",
-    "Telefonia", "Táxi / Uber", "Vestuário", "Água", "Outros"
+    "Telefonia", "Táxi / Uber", "Vestuário", "Água", "Transferência Interna", "Outros"
 ]
 
 CATEGORIAS_VALIDAS_RECEITAS = [
@@ -101,16 +107,44 @@ CATEGORIAS_VALIDAS_RECEITAS = [
     "Rendimento Renda Fixa",
     "Dividendo BR",
     "Aluguel Ações EUA",
+    "Transferência Interna",
     "Outros"
 ]
+
+def is_internal_transfer(text: str) -> bool:
+    """
+    Identifica se a movimentação é uma transferência entre contas de mesma titularidade
+    ou movimentação neutra entre contas do usuário.
+    """
+    t_clean = text.lower().strip()
+    patterns = [
+        "paulo henrique",
+        "goncalves rezende",
+        "gonçalves rezende",
+        "mesma titularidade",
+        "entre contas",
+        "transferencia interna",
+        "transferência interna",
+        "transferencia entre contas",
+        "transferência entre contas",
+        "conta propria",
+        "conta própria",
+    ]
+    return any(p in t_clean for p in patterns)
 
 def normalize_expense_category(text: str) -> str:
     """
     Normaliza a categoria de despesa garantindo correspondência com as opções da planilha.
     """
     t_clean = text.lower().strip()
+    if is_internal_transfer(t_clean):
+        return "Transferência Interna"
+
     for key, cat in MAPA_CATEGORIAS_DESPESAS.items():
-        if key in t_clean:
+        if key in ["game", "jogo"]:
+            if re.search(r'\b' + re.escape(key) + r'\b', t_clean):
+                return cat
+        elif key in t_clean:
             return cat
     for cat in CATEGORIAS_VALIDAS_DESPESAS:
         if cat.lower() in t_clean:
@@ -120,19 +154,23 @@ def normalize_expense_category(text: str) -> str:
 def normalize_income_category(text: str) -> str:
     """
     Normaliza a categoria de receita garantindo correspondência com as opções da planilha,
-    com suporte especializado a proventos de corretoras (Banco Inter, XP, B3).
+    com suporte especializado a proventos de corretoras (Banco Inter, XP, B3) e transferências internas.
     """
     t_clean = text.lower().strip()
 
+    # 0. Reconhecimento de Transferências Internas (mesma titularidade)
+    if is_internal_transfer(t_clean):
+        return "Transferência Interna"
+
     # 1. Reconhecimento de Proventos e B3 / Inter
-    if "rendimento" in t_clean or re.search(r'\b[a-z]{4}11\b', t_clean):
+    if any(k in t_clean for k in ["jcp", "juros sobre capital", "juros s/ capital", "juros s/capital", "reembolso jcp"]):
+        return "Juros sobre Capital Próprio"
+    elif "rendimento" in t_clean or re.search(r'\b[a-z]{4}11\b', t_clean):
         return "Rendimento FII"
     elif "aluguel" in t_clean or "nota de aluguel" in t_clean or "reembolso dividendo" in t_clean:
         if "eua" in t_clean or "usd" in t_clean or "adr" in t_clean:
             return "Aluguel Ações EUA"
         return "Aluguel Ações BR"
-    elif "jcp" in t_clean or "juros sobre capital" in t_clean or "juros s/ capital" in t_clean:
-        return "Juros sobre Capital Próprio"
     elif "dividendo" in t_clean or "provento" in t_clean:
         if "eua" in t_clean or "usd" in t_clean or "foreign" in t_clean:
             return "Dividendo EUA"
@@ -179,6 +217,9 @@ REGRAS_CATEGORIAS = {
     "Auxílio Saúde": ("Fixo", "Essencial"),
     "Auxílio Alimentação": ("Fixo", "Essencial"),
     "Auxílio Transporte": ("Fixo", "Essencial"),
+
+    # Transferências Internas
+    "Transferência Interna": ("Variável", "Não essencial"),
 
     # Variáveis e Essenciais
     "Supermercado": ("Variável", "Essencial"),

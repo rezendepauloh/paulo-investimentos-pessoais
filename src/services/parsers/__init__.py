@@ -15,6 +15,7 @@ from src.services.parsers.c6_parser import C6BankParser
 from src.services.parsers.xp_parser import XPParser
 from src.services.parsers.mercadopago_parser import MercadoPagoParser
 from src.services.parsers.pay99_parser import Pay99Parser
+from src.services.parsers.b3_parser import B3Parser
 from src.utils.logger import get_logger
 
 logger = get_logger("services", "parsers.dispatcher")
@@ -27,6 +28,7 @@ INSTITUTION_REGISTRY: Dict[str, BaseBankParser] = {
     "inter": InterParser(),
     "c6": C6BankParser(),
     "xp": XPParser(),
+    "b3": B3Parser(),
     "mercadopago": MercadoPagoParser(),
     "99pay": Pay99Parser(),
 }
@@ -34,8 +36,9 @@ INSTITUTION_REGISTRY: Dict[str, BaseBankParser] = {
 # Opções para a UI (chave amigável -> ID do parser)
 UI_INSTITUTION_OPTIONS = [
     ("Auto-Detecção (Genérico)", "generic"),
-    ("Sicredi", "sicredi"),
+    ("B3 (Área do Investidor)", "b3"),
     ("Banco Inter", "inter"),
+    ("Sicredi", "sicredi"),
     ("Nubank", "nubank"),
     ("C6 Bank", "c6"),
     ("XP Investimentos", "xp"),
@@ -57,7 +60,7 @@ def get_parser(institution_key: str = "generic") -> BaseBankParser:
 def get_institution_guidelines(institution_key: str = "generic") -> str:
     """Retorna as instruções de exportação para a instituição selecionada."""
     parser = get_parser(institution_key)
-    return getattr(parser, "guidelines", "Exporte seu extrato em formato .OFX ou .CSV.")
+    return getattr(parser, "guidelines", "Exporte seu extrato em formato .OFX, .CSV ou .XLSX.")
 
 def parse_bank_file(
     file_bytes: bytes,
@@ -65,18 +68,28 @@ def parse_bank_file(
     institution_key: str = "generic"
 ) -> pd.DataFrame:
     """
-    Função despachante principal para arquivos bancários (.OFX ou .CSV).
+    Função despachante principal para arquivos bancários (.OFX, .CSV ou .XLSX).
     Roteia para o parser da instituição selecionada ou detectada.
     """
-    parser = get_parser(institution_key)
+    # Auto-detecção de B3 por nome do arquivo
     fname_low = filename.lower()
+    if institution_key == "generic":
+        if any(k in fname_low for k in ["movimentacao", "movimentação", "b3", "investidor.b3"]):
+            institution_key = "b3"
+
+    parser = get_parser(institution_key)
 
     logger.info(f"Despachando arquivo '{filename}' para parser '{parser.institution_name}' (chave: {institution_key})")
 
     if fname_low.endswith(".ofx"):
         return parser.parse_ofx(file_bytes, filename=filename)
+    elif fname_low.endswith(".xlsx") or fname_low.endswith(".xls"):
+        return parser.parse_excel(file_bytes, filename=filename)
+    elif fname_low.endswith(".pdf"):
+        return parser.parse_pdf(file_bytes, filename=filename)
     else:
         return parser.parse_csv(file_bytes, filename=filename)
+
 
 __all__ = [
     "BaseBankParser",
@@ -86,6 +99,7 @@ __all__ = [
     "InterParser",
     "C6BankParser",
     "XPParser",
+    "B3Parser",
     "MercadoPagoParser",
     "Pay99Parser",
     "INSTITUTION_REGISTRY",

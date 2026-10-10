@@ -85,6 +85,87 @@ class TestBankParsers(unittest.TestCase):
         self.assertEqual(df.loc[2, "Tipo"], "Receita")
         self.assertEqual(df.loc[2, "Conta creditada"], "Nubank")
 
+    def test_inter_parser_csv(self):
+        # CSV típico do Banco Inter com metadados no topo e proventos B3
+        csv_inter = (
+            "Extrato Conta Corrente \n"
+            "Conta ;7214685\n"
+            "Período ;01/09/2026 a 30/09/2026\n"
+            "Saldo ;10,00\n"
+            "\n"
+            "Data Lançamento;Histórico;Descrição;Valor;Saldo\n"
+            "30/09/2026;Credito B3 Btb;* Prov * Nota De Aluguel - 30/09/2026;0,09;171,69\n"
+            "28/09/2026;Credito B3 Btb;* Prov * Reembolso Jcp - Aluguel Flry3;144,81;156,42\n"
+            "22/09/2026;Pix recebido;Paulo Henrique Goncalves Rezende;3.958,09;10,00\n"
+            "22/09/2026;Pagamento efetuado;Pagamento Fatura - PAULO HENRIQUE GONCALVES REZENDE;-3.958,09;-3.962,18\n"
+            "15/09/2026;Crédito Evento B3;* Prov * Rendimento 33                 Knri11;36,30;178,16\n"
+            "02/09/2026;Crédito Evento B3;* Prov * Dividendos 438                Flry3;57,05;10,00\n"
+            "01/09/2026;Crédito Evento B3;* Prov * Juros S/capital 174                Itub3;2,61;129,19\n"
+        ).encode("utf-8")
+
+        parser = get_parser("inter")
+        df = parser.parse_csv(csv_inter, filename="Extrato-01-09-2026-a-30-09-2026-CSV.csv")
+
+        self.assertEqual(len(df), 7)
+        for col in STANDARD_COLUMNS:
+            self.assertIn(col, df.columns)
+
+        # Proventos B3
+        self.assertEqual(df.loc[0, "Categoria"], "Aluguel Ações BR")
+        self.assertEqual(df.loc[0, "Conta creditada"], "Inter")
+        self.assertEqual(df.loc[0, "Tipo"], "Receita")
+
+        # Rendimento FII
+        self.assertEqual(df.loc[4, "Categoria"], "Rendimento FII")
+        self.assertIn("KNRI11", df.loc[4, "Descricao"].upper())
+
+        # JCP
+        self.assertEqual(df.loc[6, "Categoria"], "Juros sobre Capital Próprio")
+
+        # Pagamento fatura
+        self.assertEqual(df.loc[3, "Tipo"], "Despesa")
+        self.assertEqual(df.loc[3, "Conta debitada"], "Inter")
+
+        # Transferência Interna (Pix recebido de Paulo Henrique Rezende)
+        self.assertEqual(df.loc[2, "Categoria"], "Transferência Interna")
+        self.assertEqual(df.loc[2, "Tipo"], "Receita")
+
+    def test_inter_parser_ofx(self):
+        # Validação com arquivo OFX real emitido pelo Banco Inter
+        with open("temp/Extrato-01-09-2026-a-30-09-2026-OFX.ofx", "rb") as f:
+            ofx_bytes = f.read()
+
+        parser = get_parser("inter")
+        df = parser.parse_ofx(ofx_bytes, filename="Extrato-01-09-2026-a-30-09-2026-OFX.ofx")
+
+        self.assertEqual(len(df), 26)
+        for col in STANDARD_COLUMNS:
+            self.assertIn(col, df.columns)
+
+        # Proventos B3
+        self.assertEqual(df.loc[0, "Categoria"], "Aluguel Ações BR")
+        self.assertEqual(df.loc[0, "Conta creditada"], "Inter")
+        self.assertIn("Nota De Aluguel", df.loc[0, "Descricao"])
+
+        # Rendimento FII Knri11
+        fii_row = df[df["Descricao"].str.contains("Knri11", case=False, na=False)].iloc[0]
+        self.assertEqual(fii_row["Categoria"], "Rendimento FII")
+        self.assertEqual(fii_row["Conta creditada"], "Inter")
+
+        # JCP Itub3
+        jcp_row = df[df["Descricao"].str.contains("Itub3", case=False, na=False)].iloc[0]
+        self.assertEqual(jcp_row["Categoria"], "Juros sobre Capital Próprio")
+
+        # Pagamento Fatura
+        fat_row = df[df["Descricao"].str.contains("Pagamento Fatura", case=False, na=False)].iloc[0]
+        self.assertEqual(fat_row["Tipo"], "Despesa")
+        self.assertEqual(fat_row["Conta debitada"], "Inter")
+        self.assertEqual(fat_row["Forma_Pagamento"], "Cartão de crédito")
+
+        # Pix de mesma titularidade (Paulo Henrique Goncalves Rezende)
+        pix_self_row = df[df["Descricao"].str.contains("Paulo Henrique", case=False, na=False) & (df["Tipo"] == "Receita")].iloc[0]
+        self.assertEqual(pix_self_row["Categoria"], "Transferência Interna")
+
     def test_dispatcher_parse_bank_file(self):
         csv_data = (
             "Data,Descricao,Valor\n"
@@ -95,5 +176,73 @@ class TestBankParsers(unittest.TestCase):
         self.assertEqual(len(df), 1)
         self.assertEqual(df.loc[0, "Categoria"], "Supermercado")
 
+    def test_b3_parser_excel(self):
+        # Validação com arquivo Excel real exportado da Área do Investidor B3
+        with open("temp/movimentacao-2026-10-10-12-45-10.xlsx", "rb") as f:
+            excel_bytes = f.read()
+
+        parser = get_parser("b3")
+        df = parser.parse_excel(excel_bytes, filename="movimentacao-2026-10-10-12-45-10.xlsx")
+
+        self.assertEqual(len(df), 34)
+        for col in STANDARD_COLUMNS:
+            self.assertIn(col, df.columns)
+
+        # Proventos com ticker exato
+        azza_aluguel = df[df["Descricao"].str.contains("AZZA3", case=False, na=False)].iloc[0]
+        self.assertEqual(azza_aluguel["Valor"], 24.53)
+        self.assertEqual(azza_aluguel["Categoria"], "Aluguel Ações BR")
+        self.assertEqual(azza_aluguel["Conta creditada"], "Inter")
+
+        # Rendimento FII
+        knri_inter = df[(df["Descricao"].str.contains("KNRI11")) & (df["Conta creditada"] == "Inter")].iloc[0]
+        self.assertEqual(knri_inter["Valor"], 36.30)
+        self.assertEqual(knri_inter["Categoria"], "Rendimento FII")
+
+        knri_xp = df[(df["Descricao"].str.contains("KNRI11")) & (df["Conta creditada"] == "XP")].iloc[0]
+        self.assertEqual(knri_xp["Valor"], 63.80)
+        self.assertEqual(knri_xp["Categoria"], "Rendimento FII")
+
+        # JCP Itub3
+        itub_jcp = df[df["Descricao"].str.contains("ITUB3 - JCP")].iloc[0]
+        self.assertEqual(itub_jcp["Valor"], 2.61)
+        self.assertEqual(itub_jcp["Categoria"], "Juros sobre Capital Próprio")
+
+        # Auto-detecção no dispatcher
+        df_disp = parse_bank_file(excel_bytes, filename="movimentacao-2026-10-10-12-45-10.xlsx", institution_key="generic")
+        self.assertEqual(len(df_disp), 34)
+
+    def test_inter_parser_pdf(self):
+        # Validação da fatura de cartão de crédito em PDF do Banco Inter protegida por senha
+        with open("temp/Fatura.pdf", "rb") as f:
+            pdf_bytes = f.read()
+
+        parser = get_parser("inter")
+        df = parser.parse_pdf(pdf_bytes, filename="Fatura.pdf", password="046376")
+
+        self.assertEqual(len(df), 57)
+        for col in STANDARD_COLUMNS:
+            self.assertIn(col, df.columns)
+
+        # Soma total bate exatamente com a fatura: R$ 5.172,77
+        self.assertAlmostEqual(df["Valor"].sum(), 5172.77, places=2)
+
+        # Checa data de fechamento contábil da fatura (dia 20 do mês de vencimento)
+        self.assertEqual(df.loc[0, "Data"].strftime("%Y-%m-%d"), "2026-08-20")
+
+        # Checa conta debitada
+        self.assertTrue((df["Conta debitada"] == "Cartão de crédito").all())
+
+        # Checa normalização de parcelas com data de compra
+        shopee = df[df["Descricao"].str.contains("SHPSTECNOLOGIA")].iloc[0]
+        self.assertEqual(shopee["Descricao"], "SHOPEE *SHPSTECNOLOGIA 1/7 (Compra: 23/07)")
+        self.assertEqual(shopee["Valor"], 66.02)
+
+        # Auto-detecção no dispatcher com extensão .pdf
+        df_disp = parse_bank_file(pdf_bytes, filename="Fatura.pdf", institution_key="inter")
+        self.assertEqual(len(df_disp), 57)
+
 if __name__ == "__main__":
     unittest.main()
+
+

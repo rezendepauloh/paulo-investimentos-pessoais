@@ -39,6 +39,14 @@ class BaseBankParser(ABC):
         """Processa arquivo OFX específico da instituição."""
         pass
 
+    def parse_excel(self, file_bytes: bytes, filename: str = "") -> pd.DataFrame:
+        """Processa arquivo Excel (.xlsx / .xls) específico da instituição."""
+        return self.empty_dataframe()
+
+    def parse_pdf(self, file_bytes: bytes, filename: str = "", password: str = "") -> pd.DataFrame:
+        """Processa fatura ou extrato em PDF específico da instituição."""
+        return self.empty_dataframe()
+
     def parse_receipt(self, file_bytes: bytes, mime_type: str = "image/png") -> pd.DataFrame:
         """Processa comprovante/imagem da instituição (fallback padrão para IA)."""
         from src.services.ingestion_parser import parse_receipt_image
