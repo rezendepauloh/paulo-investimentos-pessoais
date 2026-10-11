@@ -3,6 +3,7 @@
 Testes unitários para o subsistema de Parsers Dedicados por Instituição Financeira
 (src.services.parsers).
 """
+import os
 import unittest
 import pandas as pd
 from unittest.mock import patch, MagicMock
@@ -214,7 +215,10 @@ class TestBankParsers(unittest.TestCase):
 
     def test_inter_parser_pdf(self):
         # Validação da fatura de cartão de crédito em PDF do Banco Inter protegida por senha
-        with open("temp/Fatura.pdf", "rb") as f:
+        fpath = "temp/Fatura.pdf"
+        if not os.path.exists(fpath):
+            self.skipTest(f"Arquivo {fpath} não encontrado no ambiente local.")
+        with open(fpath, "rb") as f:
             pdf_bytes = f.read()
 
         parser = get_parser("inter")
@@ -241,6 +245,53 @@ class TestBankParsers(unittest.TestCase):
         # Auto-detecção no dispatcher com extensão .pdf
         df_disp = parse_bank_file(pdf_bytes, filename="Fatura.pdf", institution_key="inter")
         self.assertEqual(len(df_disp), 57)
+
+    def test_c6_parser_pdf(self):
+        # Validação das faturas de cartão de crédito em PDF do C6 Bank protegidas por senha
+        fpath_09 = "temp/09 - Fatura-CPF.pdf"
+        fpath_10 = "temp/10 - Fatura-CPF.pdf"
+
+        if not os.path.exists(fpath_09) or not os.path.exists(fpath_10):
+            self.skipTest("Arquivos de fatura do C6 Bank não encontrados no ambiente.")
+
+        parser = get_parser("c6")
+
+        # 1. Fatura de Setembro (09)
+        with open(fpath_09, "rb") as f:
+            pdf_bytes_09 = f.read()
+
+        df_09 = parser.parse_pdf(pdf_bytes_09, filename="09 - Fatura-CPF.pdf", password="046376")
+        self.assertEqual(len(df_09), 64)
+        self.assertAlmostEqual(df_09["Valor"].sum(), 6431.75, places=2)
+        self.assertEqual(df_09.loc[0, "Data"].strftime("%Y-%m-%d"), "2026-09-10")
+        self.assertTrue((df_09["Conta debitada"] == "Cartão de crédito").all())
+        self.assertTrue((df_09["Forma_Pagamento"] == "Cartão de crédito").all())
+        # Confirma que nenhuma despesa caiu como Outros
+        self.assertEqual(len(df_09[df_09["Categoria"] == "Outros"]), 0)
+
+        # 2. Fatura de Outubro (10) - inclui compra internacional em USD e IOF
+        with open(fpath_10, "rb") as f:
+            pdf_bytes_10 = f.read()
+
+        df_10 = parser.parse_pdf(pdf_bytes_10, filename="10 - Fatura-CPF.pdf", password="046376")
+        self.assertEqual(len(df_10), 54)
+        self.assertAlmostEqual(df_10["Valor"].sum(), 6152.99, places=2)
+        self.assertEqual(df_10.loc[0, "Data"].strftime("%Y-%m-%d"), "2026-10-10")
+        self.assertTrue((df_10["Conta debitada"] == "Cartão de crédito").all())
+        self.assertEqual(len(df_10[df_10["Categoria"] == "Outros"]), 0)
+
+        # Valida compra internacional e IOF
+        petro_iof = df_10[df_10["Descricao"].str.contains("IOF PETROBRAS")].iloc[0]
+        self.assertEqual(petro_iof["Valor"], 4.45)
+        self.assertEqual(petro_iof["Categoria"], "Tributo")
+
+        petro_compra = df_10[df_10["Descricao"] == "PETROBRAS - SHOPPING (Compra: 05/09)"].iloc[0]
+        self.assertEqual(petro_compra["Valor"], 127.21)
+        self.assertEqual(petro_compra["Categoria"], "Combustível")
+
+        # Auto-detecção no dispatcher
+        df_disp = parse_bank_file(pdf_bytes_09, filename="09 - Fatura-CPF.pdf", institution_key="c6")
+        self.assertEqual(len(df_disp), 64)
 
 if __name__ == "__main__":
     unittest.main()

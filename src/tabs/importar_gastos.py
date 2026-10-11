@@ -64,6 +64,7 @@ CATEGORIAS_DESPESAS = [
     "Supermercado",
     "Telefonia",
     "Táxi / Uber",
+    "Tributo",
     "Vestuário",
     "Água",
     "Transferência Interna",
