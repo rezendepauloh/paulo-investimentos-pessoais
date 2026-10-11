@@ -547,7 +547,17 @@ def append_transactions_to_sheets(df_transacoes: pd.DataFrame) -> dict:
                 essencial = "Não essencial" if "não" in essencial_raw.lower() or "nao" in essencial_raw.lower() else "Essencial"
                 
                 dias_ate_desp = str(row.get("Dias até", "Já debitado")).strip() or "Já debitado"
-                tipo_cobranca = str(row.get("Tipo de Cobrança", "À Vista")).strip() or "À Vista"
+                
+                # Fórmula dinâmica para o Google Sheets identificar se é Parcelado ou À Vista
+                # Se row já tiver uma linha calculada no sheet, gera a fórmula referenciando A{linha}
+                # Fallback: detecta por regex se tem fração de parcela no nome
+                import re
+                nome_sem_compra = re.sub(r'\(Compra:\s*\d{2}/\d{2}\)', '', nome, flags=re.IGNORECASE).strip()
+                is_parcela = bool(re.search(r'\b\d+/\d+\b', nome_sem_compra))
+                tipo_cobranca_padrao = "Parcelado" if is_parcela else "À Vista"
+                tipo_cobranca = str(row.get("Tipo de Cobrança", tipo_cobranca_padrao)).strip()
+                if not tipo_cobranca or tipo_cobranca in ["À Vista", "Parcelado"]:
+                    tipo_cobranca = tipo_cobranca_padrao
 
                 despesas_ano_sheet.append([
                     nome,

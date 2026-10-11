@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 FROM python:3.12-slim-bookworm
 
 # Variáveis de ambiente para comportamento limpo do Python e bypass de inspeção SSL corporativa
