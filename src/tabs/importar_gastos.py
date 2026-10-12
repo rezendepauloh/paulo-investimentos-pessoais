@@ -8,6 +8,7 @@ from src.services.deduplication import identify_duplicates
 from src.services.ingestion_parser import parse_ofx, parse_csv, parse_receipt_image
 from src.services.parsers import (
     parse_bank_file,
+    parse_receipt_file,
     get_institution_guidelines,
     UI_INSTITUTION_OPTIONS
 )
@@ -20,6 +21,7 @@ logger = get_logger("tabs", "importar_gastos")
 
 CATEGORIAS_RECEITAS = [
     "Salário",
+    "Diárias",
     "Auxílio Saúde",
     "Auxílio Alimentação",
     "Auxílio Transporte",
@@ -56,6 +58,7 @@ CATEGORIAS_DESPESAS = [
     "Luz",
     "Medicamentos",
     "Médicos e terapeutas",
+    "Pedágio",
     "Presentes",
     "Restaurante",
     "Salão de beleza",
@@ -79,10 +82,12 @@ CONTAS_CREDITADAS_PADRAO = [
     "Sicredi",
     "C6",
     "XP",
+    "Vuon Card",
     "99 Pay",
     "Mercado Pago",
     "Conta corrente",
     "Cartão de crédito",
+    "Cartão de loja / Carnê",
     "Nubank",
     "Outros",
     ""
@@ -90,6 +95,8 @@ CONTAS_CREDITADAS_PADRAO = [
 
 CONTAS_DEBITADAS_PADRAO = [
     "Cartão de crédito",
+    "Vuon Card",
+    "Cartão de loja / Carnê",
     "Conta corrente",
     "99 Pay",
     "Mercado Pago",
@@ -192,12 +199,29 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
 
 
     # ==========================================
-    # ABA 1: COMPROVANTES E PRINTS (GEMINI VISION)
+    # ABA 1: COMPROVANTES E PRINTS (OCR LOCAL TESSERACT & IA)
     # ==========================================
     if selected_slug == "comprovantes":
 
-        st.markdown("##### 📸 Leitura Inteligente de Prints e Comprovantes")
-        st.write("Envie imagens de comprovantes Pix, faturas de cartão ou recibos. A IA extrairá automaticamente valores, datas e categorias.")
+        st.markdown("##### 📸 Leitura Inteligente de Prints e Comprovantes (OCR Local & IA)")
+        st.write("Envie fotos ou prints de comprovantes Pix, faturas de cartão ou carnês de lojas (Renner, Riachuelo, etc.). O processamento é realizado localmente via Tesseract OCR com fallback inteligente.")
+
+        # Seletor de Instituição Financeira / Loja
+        col_inst_sel_rcp, col_inst_info_rcp = st.columns([1.5, 2.5])
+        with col_inst_sel_rcp:
+            labels_rcp = [opt[0] for opt in UI_INSTITUTION_OPTIONS]
+            keys_rcp = [opt[1] for opt in UI_INSTITUTION_OPTIONS]
+            selected_inst_idx_rcp = st.selectbox(
+                "🏦 Instituição Financeira / Origem do Print",
+                range(len(labels_rcp)),
+                format_func=lambda i: labels_rcp[i],
+                key="select_receipt_institution"
+            )
+            selected_inst_key_rcp = keys_rcp[selected_inst_idx_rcp]
+
+        with col_inst_info_rcp:
+            guideline_text_rcp = get_institution_guidelines(selected_inst_key_rcp)
+            st.info(f"💡 **Dica de Leitura:** {guideline_text_rcp}")
 
         uploaded_images = st.file_uploader(
             "Selecione um ou mais arquivos de imagem ou documento",
@@ -208,11 +232,11 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
 
         col_proc_img, _ = st.columns([2.5, 7.5])
         with col_proc_img:
-            btn_proc_images = st.button("✨ Processar Imagens com Gemini Vision", type="primary", use_container_width=True, disabled=(not uploaded_images))
+            btn_proc_images = st.button("🔍 Processar Imagens com OCR", type="primary", use_container_width=True, disabled=(not uploaded_images))
 
         if btn_proc_images and uploaded_images:
             all_extracted = []
-            with st.spinner("Analisando comprovantes e faturas com Gemini Vision..."):
+            with st.spinner("Analisando comprovantes e extraindo parcelas via OCR Local..."):
                 for uploaded_file in uploaded_images:
                     try:
                         bytes_data = uploaded_file.read()
@@ -220,7 +244,12 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
                         if "pdf" in uploaded_file.name.lower():
                             mime_type = "application/pdf"
 
-                        df_parsed = parse_receipt_image(bytes_data, mime_type=mime_type)
+                        df_parsed = parse_receipt_file(
+                            file_bytes=bytes_data,
+                            filename=uploaded_file.name,
+                            institution_key=selected_inst_key_rcp,
+                            mime_type=mime_type
+                        )
                         if not df_parsed.empty:
                             all_extracted.append(df_parsed)
                     except Exception as e:
@@ -228,6 +257,10 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
 
             if all_extracted:
                 df_novos = pd.concat(all_extracted, ignore_index=True)
+                if "Conta creditada" not in df_novos.columns:
+                    df_novos["Conta creditada"] = df_novos.apply(
+                        lambda r: r.get("Conta debitada", "") if r.get("Tipo") == "Receita" else "", axis=1
+                    )
                 if "Conta debitada" not in df_novos.columns and "Forma_Pagamento" in df_novos.columns:
                     df_novos["Conta debitada"] = df_novos["Forma_Pagamento"]
                 if "Fixo vs. Variável" not in df_novos.columns:
@@ -267,8 +300,8 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
             st.info(f"💡 **Dica de Exportação:** {guideline_text}")
 
         uploaded_bank_files = st.file_uploader(
-            "Selecione arquivos .OFX, .CSV, .XLSX (B3) ou .PDF (Fatura)",
-            type=["ofx", "csv", "xlsx", "xls", "pdf", "txt"],
+            "Selecione arquivos .OFX, .CSV, .ZIP (C6/Inter), .XLSX (B3) ou .PDF (Fatura)",
+            type=["ofx", "csv", "xlsx", "xls", "pdf", "txt", "zip"],
             accept_multiple_files=True,
             key="uploader_bank_files"
         )

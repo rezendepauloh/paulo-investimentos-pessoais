@@ -19,6 +19,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     ca-certificates \
     build-essential \
     tzdata \
+    tesseract-ocr \
+    tesseract-ocr-por \
     && update-ca-certificates \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
     && apt-get clean \

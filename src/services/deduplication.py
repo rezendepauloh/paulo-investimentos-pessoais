@@ -273,7 +273,7 @@ def identify_duplicates(novos_df: pd.DataFrame, existentes_df: Optional[pd.DataF
         elif "transferência interna" in c_low or "transferencia interna" in c_low:
             statuses.append("🔄 Transf. Interna")
             importar_flags.append(False)
-        elif any(k in d_low for k in ["pagamento fatura", "pgto fatura", "fatura cartao", "fatura cartão", "pagamento de cartao", "pagamento de cartão"]):
+        elif any(k in d_low for k in ["pagamento fatura", "pgto fatura", "pgto fat", "fatura cartao", "fatura cartão", "fatura de cartao", "fatura de cartão", "pagamento de cartao", "pagamento de cartão"]):
             statuses.append("📄 Pgto Fatura")
             importar_flags.append(False)
         elif any(k in d_low for k in ["paulo henrique", "goncalves rezende", "mesma titularidade", "entre contas"]):

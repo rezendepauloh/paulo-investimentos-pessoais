@@ -19,6 +19,8 @@ def render_sidebar(current_page: str, df_holdings=None, df_orders=None, df_perf=
             _render_sidebar_desempenho(df_perf)
         elif current_page == "extratos":
             _render_sidebar_extratos(df_receitas, df_despesas, df_dividendos, df_orders)
+        elif current_page == "cartao_credito":
+            _render_sidebar_cartao_credito(df_despesas)
 
         elif current_page == "fundamentalista":
             _render_sidebar_fundamentalista(df_holdings)
@@ -364,6 +366,51 @@ def _render_sidebar_extratos(df_receitas, df_despesas, df_dividendos, df_orders)
             mes_opcoes += m_sorted
         mes_sel = st.selectbox("🗓️ Mês/Ano:", options=mes_opcoes, key="ext_ord_select_mes")
         st.session_state["ext_ord_mes"] = mes_sel
+
+
+def _render_sidebar_cartao_credito(df_despesas):
+    st.header("💳 Cartão & Parcelas")
+    st.caption("Filtros para previsão e acompanhamento de parcelas futuras.")
+
+    # 1. Modo Privacidade
+    modo_privacidade = st.toggle(
+        "👁️ Modo Privacidade",
+        value=st.session_state.get("cartao_modo_privacidade", False),
+        help="Oculte valores em R$ da tela de parcelas para apresentações.",
+        key="cartao_toggle_privacidade"
+    )
+    st.session_state["cartao_modo_privacidade"] = modo_privacidade
+
+    st.markdown("---")
+    st.subheader("🎛️ Filtros de Parcelas")
+
+    # 2. Busca por estabelecimento
+    busca_val = st.text_input(
+        "🔍 Buscar Compra / Loja:",
+        value=st.session_state.get("cartao_busca", ""),
+        help="Filtre compras pelo nome (ex: Shopee, Arezzo, Nuuvem)",
+        key="cartao_input_busca"
+    )
+    st.session_state["cartao_busca"] = busca_val
+
+    # 3. Filtro de Categoria
+    categorias_disponiveis = ["Todas as Categorias"]
+    if df_despesas is not None and not df_despesas.empty:
+        col_cat = "Categoria" if "Categoria" in df_despesas.columns else "categoria"
+        if col_cat in df_despesas.columns:
+            cats = df_despesas[col_cat].dropna().unique().tolist()
+            categorias_disponiveis += sorted(cats)
+
+    cat_sel = st.selectbox(
+        "🏷️ Categoria de Despesa:",
+        options=categorias_disponiveis,
+        index=0,
+        key="cartao_select_categoria"
+    )
+    st.session_state["cartao_filtro_categoria"] = cat_sel
+
+    st.markdown("---")
+    st.caption("💡 As parcelas futuras são projetadas automaticamente a partir do histórico de faturas faturadas.")
 
 
 def _render_sidebar_fundamentalista(df_holdings):

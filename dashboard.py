@@ -34,6 +34,7 @@ from src.tabs import (
     render_tab_visao_geral,
     render_tab_desempenho,
     render_tab_extratos,
+    render_tab_cartao_credito,
     render_tab_fundamentalista,
     render_tab_consultoria_ia,
     render_tab_importar_gastos,
@@ -158,6 +159,8 @@ elif current_page == "desempenho" or current_page == "📈 Desempenho e Benchmar
     render_tab_desempenho(df_perf)
 elif current_page == "extratos" or current_page == "📑 Extratos e Lançamentos":
     render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders)
+elif current_page == "cartao_credito" or current_page == "💳 Cartão & Parcelas":
+    render_tab_cartao_credito(df_despesas)
 elif current_page == "fundamentalista" or current_page == "🔍 Análise Fundamentalista":
     render_tab_fundamentalista(df_holdings, df_dividendos)
 elif current_page == "consultoria_ia" or current_page == "🤖 Consultoria de Alocação com IA":

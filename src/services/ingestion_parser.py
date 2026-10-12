@@ -159,11 +159,13 @@ MAPA_CATEGORIAS_DESPESAS = {
     "táxi": "Táxi / Uber",
     "taxi": "Táxi / Uber",
     "estacionamento": "Estacionamento",
-    "sem parar": "Pedágio viagem",
-    "conectcar": "Pedágio viagem",
-    "veloe": "Pedágio viagem",
-    "pedagio": "Pedágio viagem",
-    "pedágio": "Pedágio viagem",
+    "sem parar": "Pedágio",
+    "conectcar": "Pedágio",
+    "veloe": "Pedágio",
+    "pedagio": "Pedágio",
+    "pedágio": "Pedágio",
+    "c6tag": "Pedágio",
+    "c6 tag": "Pedágio",
     "guiche web": "Eventos",
     "guiche": "Eventos",
     "snowland": "Eventos",
@@ -176,7 +178,9 @@ MAPA_CATEGORIAS_DESPESAS = {
     "ipva": "Tributo",
     "irpf": "Tributo",
     "darf": "Tributo",
-    "das": "Tributo",
+    "guia das": "Tributo",
+    "das simples": "Tributo",
+    "simples nacional": "Tributo",
     "grerj": "Tributo",
     "dare": "Tributo",
     "gps": "Tributo",
@@ -330,6 +334,7 @@ CATEGORIAS_VALIDAS_DESPESAS = [
 
 CATEGORIAS_VALIDAS_RECEITAS = [
     "Salário",
+    "Diárias",
     "Auxílio Saúde",
     "Auxílio Alimentação",
     "Auxílio Transporte",
@@ -380,7 +385,7 @@ def normalize_expense_category(text: str) -> str:
         return "Transferência Interna"
 
     for key, cat in MAPA_CATEGORIAS_DESPESAS.items():
-        if key in ["game", "jogo", "bar", "luz", "agua", "água"]:
+        if key in ["game", "jogo", "bar", "luz", "agua", "água", "taxa", "imposto", "das", "darf"]:
             if re.search(r'\b' + re.escape(key) + r'\b', t_clean):
                 return cat
         elif key in t_clean:
@@ -454,6 +459,7 @@ REGRAS_CATEGORIAS = {
     "Financiamento": ("Fixo", "Essencial"),
     "Tributo": ("Fixo", "Essencial"),
     "Salário": ("Fixo", "Essencial"),
+    "Diárias": ("Variável", "Essencial"),
     "Auxílio Saúde": ("Fixo", "Essencial"),
     "Auxílio Alimentação": ("Fixo", "Essencial"),
     "Auxílio Transporte": ("Fixo", "Essencial"),
@@ -468,6 +474,7 @@ REGRAS_CATEGORIAS = {
     "Médicos e terapeutas": ("Variável", "Essencial"),
     "Serviços / Manutenção": ("Variável", "Essencial"),
     "Táxi / Uber": ("Variável", "Essencial"),
+    "Pedágio": ("Variável", "Essencial"),
     "Pedágio viagem": ("Variável", "Essencial"),
 
     # Variáveis e Não Essenciais

@@ -16,6 +16,8 @@ from src.services.parsers.xp_parser import XPParser
 from src.services.parsers.mercadopago_parser import MercadoPagoParser
 from src.services.parsers.pay99_parser import Pay99Parser
 from src.services.parsers.b3_parser import B3Parser
+from src.services.parsers.store_cards_parser import StoreCardsParser
+from src.services.parsers.vuon_parser import VuonCardParser
 from src.utils.logger import get_logger
 
 logger = get_logger("services", "parsers.dispatcher")
@@ -23,6 +25,8 @@ logger = get_logger("services", "parsers.dispatcher")
 # Registro Oficial de Instituições Suportadas
 INSTITUTION_REGISTRY: Dict[str, BaseBankParser] = {
     "generic": GenericBankParser(),
+    "vuon": VuonCardParser(),
+    "store_cards": StoreCardsParser(),
     "sicredi": SicrediParser(),
     "nubank": NubankParser(),
     "inter": InterParser(),
@@ -36,6 +40,8 @@ INSTITUTION_REGISTRY: Dict[str, BaseBankParser] = {
 # Opções para a UI (chave amigável -> ID do parser)
 UI_INSTITUTION_OPTIONS = [
     ("Auto-Detecção (Genérico)", "generic"),
+    ("Vuon Card (Comper / Fort)", "vuon"),
+    ("Cartões de Loja / Carnês (Renner, Riachuelo, etc.)", "store_cards"),
     ("B3 (Área do Investidor)", "b3"),
     ("Banco Inter", "inter"),
     ("Sicredi", "sicredi"),
@@ -76,12 +82,20 @@ def parse_bank_file(
     if institution_key == "generic":
         if any(k in fname_low for k in ["movimentacao", "movimentação", "b3", "investidor.b3"]):
             institution_key = "b3"
+        elif any(k in fname_low for k in ["c6", "extrato-da-sua-conta"]):
+            institution_key = "c6"
+        elif any(k in fname_low for k in ["renner", "riachuelo", "carnê", "carne"]):
+            institution_key = "store_cards"
+        elif any(k in fname_low for k in ["vuon", "comper", "fort"]):
+            institution_key = "vuon"
 
     parser = get_parser(institution_key)
 
     logger.info(f"Despachando arquivo '{filename}' para parser '{parser.institution_name}' (chave: {institution_key})")
 
-    if fname_low.endswith(".ofx"):
+    if fname_low.endswith(".zip"):
+        return parser.parse_zip(file_bytes, filename=filename)
+    elif fname_low.endswith(".ofx"):
         return parser.parse_ofx(file_bytes, filename=filename)
     elif fname_low.endswith(".xlsx") or fname_low.endswith(".xls"):
         return parser.parse_excel(file_bytes, filename=filename)
@@ -89,6 +103,27 @@ def parse_bank_file(
         return parser.parse_pdf(file_bytes, filename=filename)
     else:
         return parser.parse_csv(file_bytes, filename=filename)
+
+
+def parse_receipt_file(
+    file_bytes: bytes,
+    filename: str = "",
+    institution_key: str = "generic",
+    mime_type: str = "image/png"
+) -> pd.DataFrame:
+    """
+    Despacha o comprovante/print para o parser da instituição ou Tesseract OCR.
+    """
+    fname_low = filename.lower()
+    if institution_key == "generic":
+        if any(k in fname_low for k in ["renner", "riachuelo", "c&a", "carnê", "carne"]):
+            institution_key = "store_cards"
+        elif any(k in fname_low for k in ["vuon", "comper", "fort"]):
+            institution_key = "vuon"
+
+    parser = get_parser(institution_key)
+    logger.info(f"Despachando comprovante '{filename}' para parser '{parser.institution_name}' (chave: {institution_key})")
+    return parser.parse_receipt(file_bytes, mime_type=mime_type)
 
 
 __all__ = [
@@ -102,9 +137,13 @@ __all__ = [
     "B3Parser",
     "MercadoPagoParser",
     "Pay99Parser",
+    "StoreCardsParser",
+    "VuonCardParser",
     "INSTITUTION_REGISTRY",
     "UI_INSTITUTION_OPTIONS",
     "get_parser",
     "get_institution_guidelines",
     "parse_bank_file",
+    "parse_receipt_file",
 ]
+
