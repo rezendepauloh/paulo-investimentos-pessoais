@@ -43,13 +43,16 @@ class SicrediParser(BaseBankParser):
         elif re.search(r'\b(TED|DOC|TRANSF)\b', raw, re.IGNORECASE):
             forma = "Transferência"
 
-        # Limpeza de prefixos frequentes do Sicredi
+        # Limpeza de prefixos frequentes do Sicredi (inclui PAGAMENTO PIX, RECEBIMENTO PIX, TED, DOC)
         cleaned = re.sub(
-            r'^(PIX\s+ENVIADO\s*-\s*|PIX\s+RECEBIDO\s*-\s*|COMPRA\s+CARTAO\s+DEB\s*-\s*|PGTO\s+TITULO\s*-\s*|TRANSF\s+ENTRE\s+CONTAS\s*-\s*)',
+            r'^(PAGAMENTO\s+PIX\s*-\s*|RECEBIMENTO\s+PIX\s*-\s*|PIX\s+ENVIADO\s*-\s*|PIX\s+RECEBIDO\s*-\s*|COMPRA\s+CARTAO\s+DEB\s*-\s*|PGTO\s+TITULO\s*-\s*|TRANSF\s+ENTRE\s+CONTAS\s*-\s*|TED\s*-\s*|DOC\s*-\s*)',
             '',
             raw,
             flags=re.IGNORECASE
         ).strip()
+
+        # Remove CPF (11 dígitos) ou CNPJ (14 dígitos) do início caso exista
+        cleaned = re.sub(r'^\d{11,14}\s*', '', cleaned).strip()
 
         return cleaned if cleaned else raw, forma
 
@@ -100,9 +103,9 @@ class SicrediParser(BaseBankParser):
             if pd.isna(dt_obj):
                 continue
 
-            # Valores do Sicredi com ponto/vírgula
-            is_negative = "-" in v_raw or "D" in t_raw or "DEBITO" in t_raw or "DÉBITO" in t_raw
-            is_credit = "+" in v_raw or "C" in t_raw or "CREDITO" in t_raw or "CRÉDITO" in t_raw
+            # Valores do Sicredi com ponto/vírgula e indicadores de débito/crédito
+            is_negative = "-" in v_raw or t_raw in ["D", "DEBITO", "DÉBITO"]
+            is_credit = "+" in v_raw or t_raw in ["C", "CREDITO", "CRÉDITO"]
 
             v_clean = re.sub(r"[R\$\s\xa0\+\-]", "", v_raw).strip()
             if "," in v_clean and "." in v_clean:

@@ -65,6 +65,25 @@ class TestBankParsers(unittest.TestCase):
         self.assertEqual(df.loc[2, "Forma_Pagamento"], "Débito")
         self.assertEqual(df.loc[2, "Categoria"], "Medicamentos")
 
+        # Testa também com o extrato real do Sicredi com colunas CodTransacao, Identificador e prefixos TED/PAGAMENTO PIX
+        fpath_real = "temp/Sicredi/Sicredi_Extrato-1.csv"
+        if os.path.exists(fpath_real):
+            with open(fpath_real, "rb") as f:
+                df_real = parser.parse_csv(f.read(), filename="Sicredi_Extrato-1.csv")
+            self.assertEqual(len(df_real), 13)
+            # Salários do Ministério Público devem ser classificados como Receita
+            mp_rows = df_real[df_real["Descricao"] == "MINISTERIO PUBLICO ESTADUAL"]
+            self.assertEqual(len(mp_rows), 7)
+            self.assertTrue((mp_rows["Tipo"] == "Receita").all())
+            self.assertTrue((mp_rows["Categoria"] == "Salário").all())
+            self.assertTrue((mp_rows["Conta creditada"] == "Sicredi").all())
+
+            # UNIGRAN como Despesa e Escola/Faculdade
+            unigran = df_real[df_real["Descricao"] == "UNIGRAN EDUCACIONAL"].iloc[0]
+            self.assertEqual(unigran["Tipo"], "Despesa")
+            self.assertEqual(unigran["Categoria"], "Escola/Faculdade")
+            self.assertEqual(unigran["Conta debitada"], "Sicredi")
+
     def test_nubank_parser_card_csv(self):
         # CSV típico de fatura de cartão Nubank: date, category, title, amount
         csv_nubank = (
@@ -293,7 +312,185 @@ class TestBankParsers(unittest.TestCase):
         df_disp = parse_bank_file(pdf_bytes_09, filename="09 - Fatura-CPF.pdf", institution_key="c6")
         self.assertEqual(len(df_disp), 64)
 
+    def test_c6_parser_zip_csv_and_ofx(self):
+        # Validação da importação direta de arquivos .zip protegidos por senha do C6 Bank
+        fpath_csv_zip = "temp/C6/extrato-da-sua-conta-01M4R9C49HC9FMW7GFREB69YR2.zip"
+        fpath_ofx_zip = "temp/C6/extrato-da-sua-conta-01M4R9JFDJRDEYV8QYA4Z1T3DY.zip"
+
+        if not os.path.exists(fpath_csv_zip) or not os.path.exists(fpath_ofx_zip):
+            self.skipTest("Arquivos .zip de extrato do C6 Bank não encontrados no ambiente.")
+
+        # 1. Extrato CSV compactado em .ZIP
+        with open(fpath_csv_zip, "rb") as f:
+            csv_zip_bytes = f.read()
+
+        df_csv = parse_bank_file(csv_zip_bytes, filename="extrato-da-sua-conta-01M4R9C49HC9FMW7GFREB69YR2.zip", institution_key="c6")
+        self.assertEqual(len(df_csv), 12)
+        self.assertAlmostEqual(df_csv[df_csv["Tipo"] == "Despesa"]["Valor"].sum(), 6494.66, places=2)
+        self.assertAlmostEqual(df_csv[df_csv["Tipo"] == "Receita"]["Valor"].sum(), 6794.66, places=2)
+        self.assertTrue((df_csv[df_csv["Tipo"] == "Despesa"]["Conta debitada"] == "C6").all())
+        self.assertTrue((df_csv[df_csv["Tipo"] == "Receita"]["Conta creditada"] == "C6").all())
+
+        # Verifica pedágios C6 Tag
+        pedagios_csv = df_csv[df_csv["Forma_Pagamento"] == "C6 Tag"]
+        self.assertEqual(len(pedagios_csv), 5)
+        self.assertTrue((pedagios_csv["Categoria"] == "Pedágio").all())
+
+        # Verifica identificação de duplicatas e neutros (Pgto Fatura desmarcado por padrão)
+        from src.services.deduplication import identify_duplicates
+        df_dup = identify_duplicates(df_csv)
+        pgto_fatura = df_dup[df_dup["Descricao"].str.contains("PGTO FAT CARTAO C6")].iloc[0]
+        self.assertFalse(pgto_fatura["Importar"])
+        self.assertEqual(pgto_fatura["Status"], "📄 Pgto Fatura")
+
+        # 2. Extrato OFX compactado em .ZIP
+        with open(fpath_ofx_zip, "rb") as f:
+            ofx_zip_bytes = f.read()
+
+        df_ofx = parse_bank_file(ofx_zip_bytes, filename="extrato-da-sua-conta-01M4R9JFDJRDEYV8QYA4Z1T3DY.zip", institution_key="c6")
+        self.assertEqual(len(df_ofx), 12)
+        self.assertAlmostEqual(df_ofx[df_ofx["Tipo"] == "Despesa"]["Valor"].sum(), 6494.66, places=2)
+        self.assertAlmostEqual(df_ofx[df_ofx["Tipo"] == "Receita"]["Valor"].sum(), 6794.66, places=2)
+
+        # 3. Teste de Auto-detecção de instituição pelo nome do arquivo zip
+        df_auto = parse_bank_file(csv_zip_bytes, filename="extrato-da-sua-conta-01M4R9C49HC9FMW7GFREB69YR2.zip", institution_key="generic")
+        self.assertEqual(len(df_auto), 12)
+
+    def test_store_cards_parser_receipt_ocr(self):
+        # Valida extração de parcelas via print/OCR das Lojas Renner
+        from src.services.parsers import parse_receipt_file
+        img_renner_path = "temp/Screenshot_20261012_121354_Lojas Renner.jpg"
+        if not os.path.exists(img_renner_path):
+            self.skipTest("Imagem de teste da Renner não encontrada.")
+
+        with open(img_renner_path, "rb") as f:
+            img_bytes = f.read()
+
+        df_renner = parse_receipt_file(
+            file_bytes=img_bytes,
+            filename="Screenshot_20261012_121354_Lojas Renner.jpg",
+            institution_key="store_cards"
+        )
+
+        self.assertEqual(len(df_renner), 2)
+        self.assertEqual(df_renner.loc[0, "Descricao"], "Renner 4/5")
+        self.assertEqual(df_renner.loc[0, "Valor"], 224.11)
+        self.assertEqual(df_renner.loc[0, "Categoria"], "Vestuário")
+        self.assertEqual(df_renner.loc[0, "Tipo"], "Despesa")
+        self.assertEqual(str(df_renner.loc[0, "Data"]), "2026-11-03")
+
+        self.assertEqual(df_renner.loc[1, "Descricao"], "Renner 5/5")
+        self.assertEqual(df_renner.loc[1, "Valor"], 224.11)
+        self.assertEqual(str(df_renner.loc[1, "Data"]), "2026-12-03")
+
+        # Auto-detecção pelo nome do arquivo
+        df_auto = parse_receipt_file(
+            file_bytes=img_bytes,
+            filename="Screenshot_20261012_121354_Lojas Renner.jpg",
+            institution_key="generic"
+        )
+        self.assertEqual(len(df_auto), 2)
+
+    def test_vuon_card_parser_pdf(self):
+        # Validação do processamento de fatura PDF do Vuon Card
+        pdf_path = "temp/Vuon/09 - Fatura.pdf"
+        if not os.path.exists(pdf_path):
+            self.skipTest("Arquivo PDF da fatura do Vuon Card não encontrado.")
+
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        df_vuon = parse_bank_file(
+            file_bytes=pdf_bytes,
+            filename="09 - Fatura.pdf",
+            institution_key="vuon"
+        )
+
+        self.assertEqual(len(df_vuon), 5)
+        self.assertAlmostEqual(df_vuon["Valor"].sum(), 833.90, places=2)
+        self.assertTrue((df_vuon["Tipo"] == "Despesa").all())
+        self.assertTrue((df_vuon["Conta debitada"] == "Vuon Card").all())
+        self.assertTrue((df_vuon["Forma_Pagamento"] == "Cartão de crédito").all())
+
+        # Verifica categorização de Supermercado e Tarifa
+        comper_items = df_vuon[df_vuon["Categoria"] == "Supermercado"]
+        self.assertEqual(len(comper_items), 4)
+        tarifa_items = df_vuon[df_vuon["Categoria"] == "Serviços / Manutenção"]
+        self.assertEqual(len(tarifa_items), 1)
+
+        # Valida que a data das despesas é a data de vencimento da fatura (10/10/2026)
+        self.assertTrue((df_vuon["Data"].astype(str) == "2026-10-10").all())
+
+        # Valida tag de data da compra na descrição
+        comper_parc = df_vuon[df_vuon["Descricao"].str.contains("HIPER COMPER 360 YPE 1/2")].iloc[0]
+        self.assertIn("(Compra: 03/09)", comper_parc["Descricao"])
+
+        # Auto-detecção pelo diretório/nome do arquivo
+        df_auto = parse_bank_file(
+            file_bytes=pdf_bytes,
+            filename="temp/Vuon/09 - Fatura.pdf",
+            institution_key="generic"
+        )
+        self.assertEqual(len(df_auto), 5)
+
+    def test_pay99_parser_receipt_ocr(self):
+        # Validação do processamento de comprovante Pix do 99 Pay com observação
+        from src.services.parsers import parse_receipt_file
+        img_99_path = "temp/99/WhatsApp Image 2026-10-12 at 12.57.17.jpeg"
+        if not os.path.exists(img_99_path):
+            self.skipTest("Arquivo de comprovante 99 Pay não encontrado.")
+
+        with open(img_99_path, "rb") as f:
+            img_bytes = f.read()
+
+        df_99 = parse_receipt_file(
+            file_bytes=img_bytes,
+            filename="WhatsApp Image 2026-10-12 at 12.57.17.jpeg",
+            institution_key="99pay"
+        )
+
+        self.assertEqual(len(df_99), 1)
+        self.assertEqual(df_99.loc[0, "Valor"], 84.00)
+        self.assertEqual(str(df_99.loc[0, "Data"]), "2026-09-01")
+        self.assertIn("Bolão Mega da virada", df_99.loc[0, "Descricao"])
+        self.assertEqual(df_99.loc[0, "Categoria"], "Eventos")
+        self.assertEqual(df_99.loc[0, "Conta debitada"], "99 Pay")
+        self.assertEqual(df_99.loc[0, "Forma_Pagamento"], "Pix")
+
+        # Teste com comprovante de condomínio (para checar desambiguação de 'das' e categoria)
+        img_cond_path = "temp/99/WhatsApp Image 2026-10-12 at 12.57.42.jpeg"
+        if os.path.exists(img_cond_path):
+            with open(img_cond_path, "rb") as f2:
+                b2 = f2.read()
+            df_cond = parse_receipt_file(
+                file_bytes=b2,
+                filename="WhatsApp Image 2026-10-12 at 12.57.42.jpeg",
+                institution_key="99pay"
+            )
+            self.assertEqual(len(df_cond), 1)
+            self.assertEqual(df_cond.loc[0, "Valor"], 120.00)
+            self.assertEqual(df_cond.loc[0, "Categoria"], "Condomínio")
+
+        # Teste com comprovante de Boleto do 99 Pay
+        img_boleto_path = "temp/99/Boleto/WhatsApp Image 2026-10-12 at 13.19.27.jpeg"
+        if os.path.exists(img_boleto_path):
+            with open(img_boleto_path, "rb") as fb:
+                bb = fb.read()
+            df_bol = parse_receipt_file(
+                file_bytes=bb,
+                filename="WhatsApp Image 2026-10-12 at 13.19.27.jpeg",
+                institution_key="99pay"
+            )
+            self.assertEqual(len(df_bol), 1)
+            self.assertEqual(df_bol.loc[0, "Valor"], 399.00)
+            self.assertEqual(str(df_bol.loc[0, "Data"]), "2026-09-09")
+            self.assertIn("RESERVA SANTA INES", df_bol.loc[0, "Descricao"])
+            self.assertEqual(df_bol.loc[0, "Categoria"], "Condomínio")
+            self.assertEqual(df_bol.loc[0, "Forma_Pagamento"], "Boleto")
+            self.assertEqual(df_bol.loc[0, "Conta debitada"], "99 Pay")
+
 if __name__ == "__main__":
     unittest.main()
+
 
 

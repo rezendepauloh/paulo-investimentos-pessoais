@@ -15,6 +15,7 @@ import pypdf
 from src.services.parsers.base_parser import BaseBankParser
 from src.services.ingestion_parser import (
     normalize_expense_category,
+    normalize_income_category,
     infer_nature_and_essentiality
 )
 from src.services.deduplication import generate_transaction_hash
@@ -24,14 +25,140 @@ logger = get_logger("services", "parsers.c6")
 
 class C6BankParser(BaseBankParser):
     institution_name: str = "C6 Bank"
-    guidelines: str = "No App C6 Bank, exporte o extrato em .OFX, .CSV ou envie o PDF da fatura do cartão (protegido pela senha de 6 dígitos)."
+    guidelines: str = "No App C6 Bank, exporte o extrato em .ZIP (.OFX/.CSV) ou envie o PDF da fatura do cartão (protegido pela senha de 6 dígitos)."
 
     def parse_csv(self, file_bytes: bytes, filename: str = "") -> pd.DataFrame:
-        from src.services.ingestion_parser import parse_csv as generic_parse_csv
-        df = generic_parse_csv(file_bytes=file_bytes, filename=filename or "c6.csv")
+        """
+        Processa extrato CSV emitido pelo C6 Bank.
+        Suporta o cabeçalho descritivo com metadados (Agência, Conta, Extrato gerado)
+        e a tabela oficial: Data Lançamento,Data Contábil,Título,Descrição,Entrada(R$),Saída(R$),Saldo do Dia(R$).
+        """
+        lines = []
+        for enc in ["utf-8-sig", "utf-8", "latin1", "cp1252"]:
+            try:
+                lines = file_bytes.decode(enc).splitlines()
+                break
+            except Exception:
+                continue
+
+        if not lines:
+            return self.empty_dataframe()
+
+        header_idx = None
+        for idx, line in enumerate(lines):
+            l_low = line.lower()
+            if "data" in l_low and ("entrada" in l_low or "saída" in l_low or "saida" in l_low or "título" in l_low or "titulo" in l_low):
+                header_idx = idx
+                break
+
+        if header_idx is None:
+            # Fallback para o parse genérico se o formato não tiver o cabeçalho do C6
+            from src.services.ingestion_parser import parse_csv as generic_parse_csv
+            df = generic_parse_csv(file_bytes=file_bytes, filename=filename or "c6.csv")
+            if not df.empty:
+                df["Conta debitada"] = df.apply(lambda r: "C6" if r.get("Tipo") == "Despesa" else "", axis=1)
+                df["Conta creditada"] = df.apply(lambda r: "C6" if r.get("Tipo") == "Receita" else "", axis=1)
+            return df
+
+        try:
+            df_raw = pd.read_csv(io.StringIO("\n".join(lines[header_idx:])), dtype=str)
+        except Exception as e:
+            logger.error(f"Erro ao converter CSV de extrato do C6 Bank ({filename}): {e}")
+            return self.empty_dataframe()
+
+        if df_raw.empty:
+            return self.empty_dataframe()
+
+        records = []
+        for _, row in df_raw.iterrows():
+            d_raw = str(row.get("Data Lançamento") or row.get("Data Lancamento") or row.get("Data Contábil") or row.get("Data Contabil") or "").strip()
+            if not d_raw or d_raw.lower() in ["nan", "none"]:
+                continue
+
+            dt_obj = None
+            for fmt in ["%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y"]:
+                try:
+                    dt_obj = datetime.datetime.strptime(d_raw, fmt).date()
+                    break
+                except ValueError:
+                    pass
+
+            if not dt_obj:
+                continue
+
+            titulo = str(row.get("Título") or row.get("Titulo") or "").strip()
+            desc = str(row.get("Descrição") or row.get("Descricao") or "").strip()
+
+            if titulo and desc and titulo.lower() != desc.lower():
+                full_desc = f"{titulo} - {desc}"
+            else:
+                full_desc = titulo or desc or "Transação C6"
+            full_desc = re.sub(r"\s+", " ", full_desc).strip()
+
+            def clean_val(v_str):
+                if not v_str or str(v_str).strip().lower() in ["nan", "none", ""]:
+                    return 0.0
+                s = str(v_str).replace("R$", "").replace(" ", "").strip()
+                if "," in s and "." in s:
+                    s = s.replace(".", "").replace(",", ".")
+                elif "," in s:
+                    s = s.replace(",", ".")
+                try:
+                    return float(s)
+                except ValueError:
+                    return 0.0
+
+            v_ent = clean_val(row.get("Entrada(R$)"))
+            v_sai = clean_val(row.get("Saída(R$)") or row.get("Saida(R$)"))
+
+            if v_ent > 0:
+                tipo = "Receita"
+                valor = v_ent
+                conta_cred = "C6"
+                conta_deb = ""
+                categoria = normalize_income_category(full_desc)
+            elif v_sai > 0:
+                tipo = "Despesa"
+                valor = v_sai
+                conta_cred = ""
+                conta_deb = "C6"
+                categoria = normalize_expense_category(full_desc)
+            else:
+                continue
+
+            f_low = full_desc.lower()
+            if "tag" in f_low or "pedagio" in f_low or "pedágio" in f_low or "motiva pantanal" in f_low:
+                if tipo == "Despesa":
+                    categoria = "Pedágio"
+
+            forma = "Conta corrente"
+            if "pix" in f_low:
+                forma = "Pix"
+            elif "tag" in f_low or "pedagio" in f_low or "pedágio" in f_low:
+                forma = "C6 Tag"
+            elif "cartao" in f_low or "cartão" in f_low or "fatura" in f_low:
+                forma = "Cartão de crédito"
+
+            fixo_var, essencial = infer_nature_and_essentiality(categoria, full_desc)
+
+            records.append({
+                "Data": dt_obj,
+                "Descricao": full_desc,
+                "Valor": valor,
+                "Categoria": categoria,
+                "Tipo": tipo,
+                "Conta creditada": conta_cred,
+                "Conta debitada": conta_deb,
+                "Fixo vs. Variável": fixo_var,
+                "Essencial vs. Não Essencial": essencial,
+                "Forma_Pagamento": forma
+            })
+
+        df = pd.DataFrame(records)
         if not df.empty:
-            df["Conta debitada"] = df.apply(lambda r: "C6" if r.get("Tipo") == "Despesa" else "", axis=1)
-            df["Conta creditada"] = df.apply(lambda r: "C6" if r.get("Tipo") == "Receita" else "", axis=1)
+            df["Hash"] = df.apply(lambda r: generate_transaction_hash(r["Data"], r["Valor"], r["Descricao"]), axis=1)
+        else:
+            df = self.empty_dataframe()
         return df
 
     def parse_ofx(self, file_input: Any, filename: str = "") -> pd.DataFrame:
@@ -40,6 +167,15 @@ class C6BankParser(BaseBankParser):
         if not df.empty:
             df["Conta debitada"] = df.apply(lambda r: "C6" if r.get("Tipo") == "Despesa" else "", axis=1)
             df["Conta creditada"] = df.apply(lambda r: "C6" if r.get("Tipo") == "Receita" else "", axis=1)
+            # Refina categorização e forma de pagamento para C6 Tag e pedágios se aplicável
+            def adjust_row(row):
+                desc_low = str(row.get("Descricao", "")).lower()
+                if "motiva pantanal" in desc_low or "tag" in desc_low or "pedagio" in desc_low or "pedágio" in desc_low:
+                    if row.get("Tipo") == "Despesa":
+                        row["Categoria"] = "Pedágio"
+                        row["Forma_Pagamento"] = "C6 Tag"
+                return row
+            df = df.apply(adjust_row, axis=1)
         return df
 
     def parse_pdf(self, file_bytes: bytes, filename: str = "", password: str = "") -> pd.DataFrame:

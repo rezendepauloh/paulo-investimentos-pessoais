@@ -6,11 +6,13 @@ from .consultoria_ia import render_tab_consultoria_ia
 from .importar_gastos import render_tab_importar_gastos
 from .editor_planilhas import render_tab_editor_planilhas
 from .configuracoes import render_tab_configuracoes
+from .cartao_credito import render_tab_cartao_credito
 
 __all__ = [
     "render_tab_visao_geral",
     "render_tab_desempenho",
     "render_tab_extratos",
+    "render_tab_cartao_credito",
     "render_tab_fundamentalista",
     "render_tab_consultoria_ia",
     "render_tab_importar_gastos",

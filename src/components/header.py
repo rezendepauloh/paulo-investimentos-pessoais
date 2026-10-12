@@ -8,6 +8,7 @@ PAGES_CONFIG = [
     {"id": "visao_geral", "label": "📊 Visão Geral e Orçamento"},
     {"id": "desempenho", "label": "📈 Desempenho e Benchmarks"},
     {"id": "extratos", "label": "📑 Extratos e Lançamentos"},
+    {"id": "cartao_credito", "label": "💳 Cartão & Parcelas"},
     {"id": "fundamentalista", "label": "🔍 Análise Fundamentalista"},
     {"id": "consultoria_ia", "label": "🤖 Consultoria de Alocação com IA"},
     {"id": "importar_gastos", "label": "📥 Importação de Dados para GSheets"},
@@ -19,6 +20,7 @@ PAGE_TO_SLUG = {
     "visao_geral": "visao_geral",
     "desempenho": "desempenho",
     "extratos": "extratos",
+    "cartao_credito": "cartao_credito",
     "fundamentalista": "fundamentalista",
     "consultoria_ia": "consultoria_ia",
     "importar_gastos": "importar_gastos",
@@ -38,6 +40,10 @@ PAGE_HEADER_INFO = {
     "extratos": {
         "title": "📑 Extratos Detalhados & Histórico de Ordens",
         "subtitle": "Consulta granular e filtragem avançada de receitas, despesas, dividendos e operações de compra e venda."
+    },
+    "cartao_credito": {
+        "title": "💳 Controle de Parcelas & Cartão de Crédito",
+        "subtitle": "Previsão de fluxo de caixa futuro, acompanhamento de compras parceladas e alívio de limite por quitação."
     },
     "fundamentalista": {
         "title": "🔍 Análise Fundamentalista & Demonstrativos",
