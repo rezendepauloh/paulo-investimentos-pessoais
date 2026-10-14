@@ -18,6 +18,7 @@ logger = get_logger("tabs", "cartao_credito")
 SUBTABS_CARTAO = {
     "visao_geral": "📊 Projeção & Visão Geral",
     "compras_ativas": "🛒 Compras Parceladas Ativas",
+    "finalizacoes_mes": "🏁 Término de Parcelas & Alívio",
     "detalhes_mensais": "📅 Cronograma Mensal Futuro",
     "historico_quitadas": "🏁 Histórico de Compras Quitadas"
 }
@@ -31,10 +32,52 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
     st.subheader("💳 Controle de Parcelas & Previsão de Cartão de Crédito")
     st.caption("Acompanhe o saldo residual devedor, previsão de faturas futuras e término de parcelamentos.")
 
-    # Filtros globais lidos da sidebar
+    # -------------------------------------------------------------------------
+    # SUB-NAVEGAÇÃO POR ABAS INTERNAS
+    # -------------------------------------------------------------------------
+    url_subtab = st.query_params.get("subtab_cartao", "visao_geral")
+    if url_subtab not in SLUG_TO_LABEL_CARTAO:
+        url_subtab = "visao_geral"
+
+    current_label = SLUG_TO_LABEL_CARTAO[url_subtab]
+    subtab_labels = list(SUBTABS_CARTAO.values())
+    default_idx = subtab_labels.index(current_label)
+
+    selected_label = st.radio(
+        "Selecionar Visualização:",
+        options=subtab_labels,
+        index=default_idx,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="cartao_subtab_radio"
+    )
+
+    selected_slug = LABEL_TO_SLUG_CARTAO[selected_label]
+    if st.query_params.get("subtab_cartao") != selected_slug:
+        st.query_params["subtab_cartao"] = selected_slug
+        st.rerun()
+
+    # Filtros lidos da sidebar de acordo com a subtab atual (com fallback para histórico)
     modo_privacidade = st.session_state.get("cartao_modo_privacidade", False)
-    filtro_categoria = st.session_state.get("cartao_filtro_categoria", "Todas as Categorias")
-    termo_busca = st.session_state.get("cartao_busca", "").strip().lower()
+
+    if selected_slug == "visao_geral":
+        filtro_categoria = st.session_state.get("cartao_vg_categoria", st.session_state.get("cartao_filtro_categoria", "Todas as Categorias"))
+        termo_busca = st.session_state.get("cartao_vg_busca", st.session_state.get("cartao_busca", "")).strip().lower()
+    elif selected_slug == "compras_ativas":
+        filtro_categoria = st.session_state.get("cartao_ativas_categoria", "Todas as Categorias")
+        termo_busca = st.session_state.get("cartao_ativas_busca", "").strip().lower()
+    elif selected_slug == "finalizacoes_mes":
+        filtro_categoria = st.session_state.get("cartao_term_categoria", "Todas as Categorias")
+        termo_busca = st.session_state.get("cartao_term_busca", "").strip().lower()
+    elif selected_slug == "detalhes_mensais":
+        filtro_categoria = st.session_state.get("cartao_cron_categoria", "Todas as Categorias")
+        termo_busca = st.session_state.get("cartao_cron_busca", "").strip().lower()
+    elif selected_slug == "historico_quitadas":
+        filtro_categoria = st.session_state.get("cartao_quit_categoria", "Todas as Categorias")
+        termo_busca = st.session_state.get("cartao_quit_busca", "").strip().lower()
+    else:
+        filtro_categoria = "Todas as Categorias"
+        termo_busca = ""
 
     # Executa cálculo de projeção
     projections = calculate_credit_card_projections(df_despesas)
@@ -71,9 +114,21 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
         if not df_detalhes.empty:
             df_detalhes = df_detalhes[df_detalhes["nome_base"].str.lower().str.contains(termo_busca)]
 
+    # Recalcula dinamicamente a projeção mensal para que o gráfico da Curva de Decaimento (L150)
+    # reflita com fidelidade as compras e parcelas filtradas por categoria e busca
+    if not df_detalhes.empty:
+        df_proj_mensal = df_detalhes.groupby(["ano_mes", "mes_ano"]).agg(
+            total_mes=("valor", "sum"),
+            qtd_parcelas=("valor", "count"),
+            compras_encerrando=("e_ultima_parcela", lambda x: int(sum(x)))
+        ).reset_index().sort_values("ano_mes")
+    else:
+        df_proj_mensal = pd.DataFrame(columns=["ano_mes", "mes_ano", "total_mes", "qtd_parcelas", "compras_encerrando"])
+
     # Recalcula totais com base nos filtros
     tot_comprometido_filtrado = float(df_ativas["valor_restante"].sum()) if not df_ativas.empty else 0.0
     qtd_ativas_filtradas = len(df_ativas)
+    media_val = float(df_proj_mensal["total_mes"].mean()) if not df_proj_mensal.empty else 0.0
 
     # -------------------------------------------------------------------------
     # CARDS DE MÉTRICAS EXECUTIVAS
@@ -85,16 +140,15 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
         st.metric(
             "💳 Total Comprometido Futuro",
             v_str,
-            help="Soma total de todas as parcelas que ainda restam a pagar nos cartões."
+            help="Soma total de todas as parcelas que ainda restam a pagar nos cartões para a seleção atual."
         )
 
     with col2:
-        media_val = resumo["media_mensal"]
         v_media = "R$ ••••••" if modo_privacidade else f"R$ {media_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         st.metric(
             "⏳ Média Mensal Estimada",
             v_media,
-            help="Média do valor comprometido por mês nos próximos períodos."
+            help="Média do valor comprometido por mês nos próximos períodos considerando o filtro ativo."
         )
 
     with col3:
@@ -105,8 +159,9 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
         )
 
     with col4:
-        encerrando = resumo.get("encerrando_destaque", 0)
+        # Se filtrado, recalcula a quantidade encerrando no mês de destaque
         mes_destaque = resumo.get("mes_destaque_encerramento", resumo.get("proximo_mes", ""))
+        encerrando = len(df_ativas[df_ativas["mes_termino"] == mes_destaque]) if not df_ativas.empty else 0
         st.metric(
             f"🏁 Finalizam em {mes_destaque}" if mes_destaque else "🏁 Finalizam em Breve",
             f"{encerrando} compras",
@@ -114,32 +169,6 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
         )
 
     st.markdown("---")
-
-    # -------------------------------------------------------------------------
-    # SUB-NAVEGAÇÃO POR ABAS INTERNAS
-    # -------------------------------------------------------------------------
-    url_subtab = st.query_params.get("subtab_cartao", "visao_geral")
-    if url_subtab not in SLUG_TO_LABEL_CARTAO:
-        url_subtab = "visao_geral"
-
-    current_label = SLUG_TO_LABEL_CARTAO[url_subtab]
-    subtab_labels = list(SUBTABS_CARTAO.values())
-    default_idx = subtab_labels.index(current_label)
-
-    selected_label = st.radio(
-        "Selecionar Visualização:",
-        options=subtab_labels,
-        index=default_idx,
-        horizontal=True,
-        label_visibility="collapsed",
-        key="cartao_subtab_radio"
-    )
-
-    selected_slug = LABEL_TO_SLUG_CARTAO[selected_label]
-    if st.query_params.get("subtab_cartao") != selected_slug:
-        st.query_params["subtab_cartao"] = selected_slug
-        st.rerun()
-
     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
 
     # =========================================================================
@@ -294,7 +323,157 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
             st.info("Nenhuma compra ativa encontrada para os filtros selecionados.")
 
     # =========================================================================
-    # SUBABA 3: CRONOGRAMA MENSAL FUTURO (MATRIZ & DETALHES)
+    # SUBABA 3: TÉRMINO DE PARCELAS & ALÍVIO ORÇAMENTÁRIO
+    # =========================================================================
+    elif selected_slug == "finalizacoes_mes":
+        st.markdown("#### 🏁 Compras Parceladas que Finalizam no Mês")
+        st.caption("Consulte as compras que completam sua última parcela no mês selecionado na barra lateral e o alívio que trarão ao seu orçamento.")
+
+        if not df_ativas.empty:
+            # Identifica compras que possuem data_termino e ano_mes
+            df_ativas_term = df_ativas.copy()
+            df_ativas_term["ano_mes_termino"] = pd.to_datetime(df_ativas_term["data_termino"]).dt.strftime("%Y-%m")
+            
+            # Ordena os meses disponíveis cronologicamente
+            meses_termino_disponiveis = sorted(df_ativas_term["ano_mes_termino"].unique().tolist())
+
+            if meses_termino_disponiveis:
+                # Obtém o mês selecionado na sidebar (ou primeiro disponível)
+                mes_termino_escolhido = st.session_state.get("cartao_term_mes", meses_termino_disponiveis[0])
+                if mes_termino_escolhido not in meses_termino_disponiveis:
+                    mes_termino_escolhido = meses_termino_disponiveis[0]
+
+                # Rótulo amigável para exibição
+                dt_escolhido = pd.to_datetime(mes_termino_escolhido + "-01")
+                meses_pt = {
+                    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+                    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+                    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+                }
+                nome_mes_exibicao = f"{meses_pt.get(dt_escolhido.month, dt_escolhido.strftime('%B'))}/{dt_escolhido.year}"
+
+                # Filtra compras que terminam no mês selecionado
+                df_finalizando = df_ativas_term[df_ativas_term["ano_mes_termino"] == mes_termino_escolhido].copy()
+
+                # Métricas do mês selecionado
+                total_alivio_mensal = float(df_finalizando["valor_parcela"].sum())
+                qtd_compras_fim = len(df_finalizando)
+                total_contratado_fim = float((df_finalizando["valor_parcela"] * df_finalizando["total_parcelas"]).sum())
+
+                # Formatações com modo de privacidade
+                str_alivio = "R$ ••••••" if modo_privacidade else f"R$ {total_alivio_mensal:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                str_total_contratado = "R$ ••••••" if modo_privacidade else f"R$ {total_contratado_fim:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+                # Cards de Resumo do Impacto
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric(
+                        "🕊️ Alívio Mensal na Fatura Seguinte",
+                        str_alivio,
+                        help="Soma do valor das parcelas que chegam ao fim neste mês e deixarão de ser cobradas a partir da próxima fatura."
+                    )
+                with c2:
+                    st.metric(
+                        "📦 Compras Encerrando",
+                        f"{qtd_compras_fim}",
+                        help="Quantidade de contratos de compras parceladas que realizam sua última cobrança neste mês."
+                    )
+                with c3:
+                    st.metric(
+                        "💰 Custo Total Destas Compras",
+                        str_total_contratado,
+                        help="Valor original somado de todas as parcelas dessas compras que estão sendo concluídas."
+                    )
+
+                st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+
+                # Layout com Gráfico e Tabela
+                col_graf, col_tab = st.columns([1, 1])
+
+                with col_graf:
+                    st.markdown("##### 🏷️ Alívio por Categoria de Despesa")
+                    if "categoria" in df_finalizando.columns and not df_finalizando.empty:
+                        cat_fim = df_finalizando.groupby("categoria")["valor_parcela"].sum().reset_index()
+                        cat_fim = cat_fim.sort_values("valor_parcela", ascending=False)
+
+                        fig_cat = px.pie(
+                            cat_fim,
+                            names="categoria",
+                            values="valor_parcela",
+                            hole=0.45,
+                            color_discrete_sequence=px.colors.qualitative.Safe
+                        )
+                        fig_cat.update_layout(
+                            margin=dict(l=10, r=10, t=10, b=10),
+                            height=300,
+                            showlegend=True,
+                            legend=dict(orientation="h", yanchor="bottom", y=-0.2)
+                        )
+                        st.plotly_chart(fig_cat, use_container_width=True)
+                    else:
+                        st.caption("Sem dados de categoria para este mês.")
+
+                with col_tab:
+                    st.markdown("##### 💡 Impacto no Fluxo de Caixa")
+                    st.info(
+                        f"Ao quitar essas **{qtd_compras_fim} compras**, seu limite de crédito será recomposto e seu custo fixo mensal terá uma redução definitiva de **{str_alivio}** por mês."
+                    )
+                    st.markdown(
+                        """
+                        - **Dica de Planejamento:** Aproveite a liberação desse fluxo mensal para direcionar aos aportes de investimentos ou reforçar sua reserva de emergência.
+                        - O término ocorre exatamente na data da fatura deste mês.
+                        """
+                    )
+
+                st.markdown("##### 📋 Compras que Realizam a Última Parcela")
+                df_tab_finalizando = df_finalizando[[
+                    "nome_base", "categoria", "total_parcelas", "valor_parcela", "conta"
+                ]].copy()
+                
+                df_tab_finalizando["Última Parcela"] = df_tab_finalizando["total_parcelas"].apply(lambda t: f"{t}/{t}")
+                df_tab_finalizando["Total Compra (R$)"] = df_finalizando["valor_parcela"] * df_finalizando["total_parcelas"]
+
+                colunas_fim_exibicao = [
+                    "nome_base", "categoria", "Última Parcela", "valor_parcela", "Total Compra (R$)", "conta"
+                ]
+                df_render_fim = df_tab_finalizando[colunas_fim_exibicao].rename(columns={
+                    "nome_base": "Estabelecimento / Compra",
+                    "categoria": "Categoria",
+                    "valor_parcela": "Valor Parcela (R$)",
+                    "conta": "Conta / Cartão"
+                })
+
+                if modo_privacidade:
+                    df_render_fim["Valor Parcela (R$)"] = "R$ ••••••"
+                    df_render_fim["Total Compra (R$)"] = "R$ ••••••"
+                    st.dataframe(df_render_fim, use_container_width=True, hide_index=True)
+                else:
+                    st.dataframe(
+                        df_render_fim,
+                        column_config={
+                            "Valor Parcela (R$)": st.column_config.NumberColumn("Valor Parcela (R$)", format="R$ %.2f"),
+                            "Total Compra (R$)": st.column_config.NumberColumn("Total Compra (R$)", format="R$ %.2f")
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
+
+                # Exportação CSV das compras finalizando
+                csv_fim = df_render_fim.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "📥 Exportar Compras Finalizando (CSV)",
+                    data=csv_fim,
+                    file_name=f"compras_finalizando_{mes_termino_escolhido}.csv",
+                    mime="text/csv"
+                )
+
+            else:
+                st.info("Nenhuma previsão de término de compras catalogada para os filtros atuais.")
+        else:
+            st.info("Nenhuma compra parcelada ativa para análise de término.")
+
+    # =========================================================================
+    # SUBABA 4: CRONOGRAMA MENSAL FUTURO (MATRIZ & DETALHES)
     # =========================================================================
     elif selected_slug == "detalhes_mensais":
         st.markdown("#### 📅 Cronograma Mensal de Parcelas Vincendas")
@@ -302,19 +481,19 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
 
         if not df_detalhes.empty:
             meses_disponiveis = sorted(df_detalhes["ano_mes"].unique().tolist())
-            col_sel_mes, _ = st.columns([2, 3])
-            with col_sel_mes:
-                # Mapeia rótulos amigáveis
-                labels_mes = [
-                    pd.to_datetime(m + "-01").strftime("%B/%Y").capitalize() for m in meses_disponiveis
-                ]
-                idx_sel = st.selectbox(
-                    "📅 Selecione o Mês de Referência:",
-                    range(len(meses_disponiveis)),
-                    format_func=lambda i: f"{labels_mes[i]} ({df_detalhes[df_detalhes['ano_mes'] == meses_disponiveis[i]]['valor'].count()} parcelas)",
-                    key="cartao_sel_cronograma_mes"
-                )
-                mes_escolhido = meses_disponiveis[idx_sel]
+            
+            # Obtém o mês selecionado na sidebar (ou primeiro disponível)
+            mes_escolhido = st.session_state.get("cartao_cron_mes", meses_disponiveis[0])
+            if mes_escolhido not in meses_disponiveis:
+                mes_escolhido = meses_disponiveis[0]
+
+            dt_escolhido_cron = pd.to_datetime(mes_escolhido + "-01")
+            meses_pt = {
+                1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+                5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+                9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+            }
+            nome_mes_cron = f"{meses_pt.get(dt_escolhido_cron.month, dt_escolhido_cron.strftime('%B'))}/{dt_escolhido_cron.year}"
 
             df_mes_especifico = df_detalhes[df_detalhes["ano_mes"] == mes_escolhido].copy()
 
@@ -322,7 +501,7 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
             qtd_mes_sel = len(df_mes_especifico)
             tot_mes_str = "R$ ••••••" if modo_privacidade else f"R$ {tot_mes_sel:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-            st.info(f"💳 Total estimado para **{labels_mes[idx_sel]}**: **{tot_mes_str}** em **{qtd_mes_sel} parcelas**.")
+            st.info(f"💳 Total estimado para **{nome_mes_cron}**: **{tot_mes_str}** em **{qtd_mes_sel} parcelas**.")
 
             df_mes_especifico["Aviso"] = df_mes_especifico["e_ultima_parcela"].apply(
                 lambda f: "🏁 Última Parcela! Quita este mês" if f else "⏳ Em andamento"
