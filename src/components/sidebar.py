@@ -369,10 +369,12 @@ def _render_sidebar_extratos(df_receitas, df_despesas, df_dividendos, df_orders)
 
 
 def _render_sidebar_cartao_credito(df_despesas):
+    current_subtab = st.query_params.get("subtab_cartao", "visao_geral")
+
     st.header("💳 Cartão & Parcelas")
     st.caption("Filtros para previsão e acompanhamento de parcelas futuras.")
 
-    # 1. Modo Privacidade
+    # 1. Modo Privacidade Global do Cartão
     modo_privacidade = st.toggle(
         "👁️ Modo Privacidade",
         value=st.session_state.get("cartao_modo_privacidade", False),
@@ -382,35 +384,240 @@ def _render_sidebar_cartao_credito(df_despesas):
     st.session_state["cartao_modo_privacidade"] = modo_privacidade
 
     st.markdown("---")
-    st.subheader("🎛️ Filtros de Parcelas")
 
-    # 2. Busca por estabelecimento
-    busca_val = st.text_input(
-        "🔍 Buscar Compra / Loja:",
-        value=st.session_state.get("cartao_busca", ""),
-        help="Filtre compras pelo nome (ex: Shopee, Arezzo, Nuuvem)",
-        key="cartao_input_busca"
-    )
-    st.session_state["cartao_busca"] = busca_val
+    # ==========================================
+    # FILTROS PARA SUBABA: VISÃO GERAL
+    # ==========================================
+    if current_subtab == "visao_geral":
+        st.subheader("📊 Filtros: Visão Geral")
 
-    # 3. Filtro de Categoria
-    categorias_disponiveis = ["Todas as Categorias"]
-    if df_despesas is not None and not df_despesas.empty:
-        col_cat = "Categoria" if "Categoria" in df_despesas.columns else "categoria"
-        if col_cat in df_despesas.columns:
-            cats = df_despesas[col_cat].dropna().unique().tolist()
-            categorias_disponiveis += sorted(cats)
+        # Busca por estabelecimento
+        busca_vg = st.text_input(
+            "🔍 Buscar Compra / Loja:",
+            value=st.session_state.get("cartao_vg_busca", ""),
+            help="Filtre compras pelo nome (ex: Shopee, Arezzo, Nuuvem)",
+            key="cartao_vg_input_busca"
+        )
+        st.session_state["cartao_vg_busca"] = busca_vg
 
-    cat_sel = st.selectbox(
-        "🏷️ Categoria de Despesa:",
-        options=categorias_disponiveis,
-        index=0,
-        key="cartao_select_categoria"
-    )
-    st.session_state["cartao_filtro_categoria"] = cat_sel
+        # Filtro de Categoria
+        categorias_disponiveis = ["Todas as Categorias"]
+        if df_despesas is not None and not df_despesas.empty:
+            col_cat = "Categoria" if "Categoria" in df_despesas.columns else "categoria"
+            if col_cat in df_despesas.columns:
+                cats = df_despesas[col_cat].dropna().unique().tolist()
+                categorias_disponiveis += sorted(cats)
+
+        cat_sel = st.selectbox(
+            "🏷️ Categoria de Despesa:",
+            options=categorias_disponiveis,
+            index=0,
+            key="cartao_vg_select_categoria"
+        )
+        st.session_state["cartao_vg_categoria"] = cat_sel
+
+        st.caption("💡 O gráfico de decaimento, as métricas e os destaques refletem os filtros selecionados.")
+
+    # ==========================================
+    # FILTROS PARA SUBABA: COMPRAS ATIVAS
+    # ==========================================
+    elif current_subtab == "compras_ativas":
+        st.subheader("🛒 Filtros: Compras Ativas")
+
+        busca_ativas = st.text_input(
+            "🔍 Buscar Compra / Loja:",
+            value=st.session_state.get("cartao_ativas_busca", ""),
+            help="Filtre compras ativas pelo nome",
+            key="cartao_ativas_input_busca"
+        )
+        st.session_state["cartao_ativas_busca"] = busca_ativas
+
+        categorias_disponiveis = ["Todas as Categorias"]
+        if df_despesas is not None and not df_despesas.empty:
+            col_cat = "Categoria" if "Categoria" in df_despesas.columns else "categoria"
+            if col_cat in df_despesas.columns:
+                cats = df_despesas[col_cat].dropna().unique().tolist()
+                categorias_disponiveis += sorted(cats)
+
+        cat_ativas = st.selectbox(
+            "🏷️ Categoria:",
+            options=categorias_disponiveis,
+            index=0,
+            key="cartao_ativas_select_cat"
+        )
+        st.session_state["cartao_ativas_categoria"] = cat_ativas
+
+    # ==========================================
+    # FILTROS PARA SUBABA: TÉRMINO DE PARCELAS & ALÍVIO
+    # ==========================================
+    elif current_subtab == "finalizacoes_mes":
+        st.subheader("🏁 Filtros: Término de Parcelas")
+
+        # 1. Seletor do Mês de Término
+        from src.services.credit_card_projection import calculate_credit_card_projections
+        projections_side = calculate_credit_card_projections(df_despesas)
+        df_ativas_side = projections_side.get("compras_ativas", pd.DataFrame())
+
+        meses_termino_opcoes = []
+        meses_termino_labels = []
+
+        if not df_ativas_side.empty:
+            df_term_calc = df_ativas_side.copy()
+            df_term_calc["ano_mes_termino"] = pd.to_datetime(df_term_calc["data_termino"]).dt.strftime("%Y-%m")
+            meses_termino_opcoes = sorted(df_term_calc["ano_mes_termino"].unique().tolist())
+
+            meses_pt = {
+                1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+                5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+                9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+            }
+            for ym in meses_termino_opcoes:
+                dt_ym = pd.to_datetime(ym + "-01")
+                nome_formatado = f"{meses_pt.get(dt_ym.month, dt_ym.strftime('%B'))}/{dt_ym.year}"
+                qtd_enc = len(df_term_calc[df_term_calc["ano_mes_termino"] == ym])
+                sufixo_qtd = f"{qtd_enc} compra" if qtd_enc == 1 else f"{qtd_enc} compras"
+                meses_termino_labels.append(f"{nome_formatado} ({sufixo_qtd})")
+
+        if meses_termino_opcoes:
+            cur_saved_term = st.session_state.get("cartao_term_mes", meses_termino_opcoes[0])
+            def_idx = meses_termino_opcoes.index(cur_saved_term) if cur_saved_term in meses_termino_opcoes else 0
+
+            idx_sel_term = st.selectbox(
+                "📅 Mês de Término:",
+                range(len(meses_termino_opcoes)),
+                index=def_idx,
+                format_func=lambda i: meses_termino_labels[i],
+                key="cartao_sel_termino_mes"
+            )
+            st.session_state["cartao_term_mes"] = meses_termino_opcoes[idx_sel_term]
+        else:
+            st.caption("Nenhum mês de término disponível.")
+
+        # 2. Busca por estabelecimento
+        busca_term = st.text_input(
+            "🔍 Buscar Compra / Loja:",
+            value=st.session_state.get("cartao_term_busca", ""),
+            help="Filtre compras que finalizam pelo nome",
+            key="cartao_term_input_busca"
+        )
+        st.session_state["cartao_term_busca"] = busca_term
+
+        # 3. Categoria
+        categorias_disponiveis = ["Todas as Categorias"]
+        if df_despesas is not None and not df_despesas.empty:
+            col_cat = "Categoria" if "Categoria" in df_despesas.columns else "categoria"
+            if col_cat in df_despesas.columns:
+                cats = df_despesas[col_cat].dropna().unique().tolist()
+                categorias_disponiveis += sorted(cats)
+
+        cat_term = st.selectbox(
+            "🏷️ Categoria:",
+            options=categorias_disponiveis,
+            index=0,
+            key="cartao_term_select_cat"
+        )
+        st.session_state["cartao_term_categoria"] = cat_term
+
+    # ==========================================
+    # FILTROS PARA SUBABA: CRONOGRAMA MENSAL
+    # ==========================================
+    elif current_subtab == "detalhes_mensais":
+        st.subheader("📅 Filtros: Cronograma Mensal")
+
+        # 1. Seletor do Mês de Referência
+        from src.services.credit_card_projection import calculate_credit_card_projections
+        projections_side = calculate_credit_card_projections(df_despesas)
+        df_detalhes_side = projections_side.get("detalhes_futuros", pd.DataFrame())
+
+        meses_cron_opcoes = []
+        meses_cron_labels = []
+
+        if not df_detalhes_side.empty:
+            meses_cron_opcoes = sorted(df_detalhes_side["ano_mes"].unique().tolist())
+            meses_pt = {
+                1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+                5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+                9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+            }
+            for ym in meses_cron_opcoes:
+                dt_ym = pd.to_datetime(ym + "-01")
+                nome_formatado = f"{meses_pt.get(dt_ym.month, dt_ym.strftime('%B'))}/{dt_ym.year}"
+                qtd_parc = len(df_detalhes_side[df_detalhes_side["ano_mes"] == ym])
+                sufixo_parc = f"{qtd_parc} parcela" if qtd_parc == 1 else f"{qtd_parc} parcelas"
+                meses_cron_labels.append(f"{nome_formatado} ({sufixo_parc})")
+
+        if meses_cron_opcoes:
+            cur_saved_cron = st.session_state.get("cartao_cron_mes", meses_cron_opcoes[0])
+            def_idx = meses_cron_opcoes.index(cur_saved_cron) if cur_saved_cron in meses_cron_opcoes else 0
+
+            idx_sel_cron = st.selectbox(
+                "📅 Mês de Referência:",
+                range(len(meses_cron_opcoes)),
+                index=def_idx,
+                format_func=lambda i: meses_cron_labels[i],
+                key="cartao_sel_cronograma_mes"
+            )
+            st.session_state["cartao_cron_mes"] = meses_cron_opcoes[idx_sel_cron]
+        else:
+            st.caption("Nenhum mês futuro no cronograma.")
+
+        # 2. Busca por estabelecimento
+        busca_cron = st.text_input(
+            "🔍 Buscar Estabelecimento:",
+            value=st.session_state.get("cartao_cron_busca", ""),
+            help="Filtre parcelas pelo nome",
+            key="cartao_cron_input_busca"
+        )
+        st.session_state["cartao_cron_busca"] = busca_cron
+
+        # 3. Categoria
+        categorias_disponiveis = ["Todas as Categorias"]
+        if df_despesas is not None and not df_despesas.empty:
+            col_cat = "Categoria" if "Categoria" in df_despesas.columns else "categoria"
+            if col_cat in df_despesas.columns:
+                cats = df_despesas[col_cat].dropna().unique().tolist()
+                categorias_disponiveis += sorted(cats)
+
+        cat_cron = st.selectbox(
+            "🏷️ Categoria:",
+            options=categorias_disponiveis,
+            index=0,
+            key="cartao_cron_select_cat"
+        )
+        st.session_state["cartao_cron_categoria"] = cat_cron
+
+    # ==========================================
+    # FILTROS PARA SUBABA: HISTÓRICO QUITADAS
+    # ==========================================
+    elif current_subtab == "historico_quitadas":
+        st.subheader("🏁 Filtros: Compras Quitadas")
+
+        busca_quit = st.text_input(
+            "🔍 Buscar Compra / Loja:",
+            value=st.session_state.get("cartao_quit_busca", ""),
+            help="Filtre compras quitadas pelo nome",
+            key="cartao_quit_input_busca"
+        )
+        st.session_state["cartao_quit_busca"] = busca_quit
+
+        categorias_disponiveis = ["Todas as Categorias"]
+        if df_despesas is not None and not df_despesas.empty:
+            col_cat = "Categoria" if "Categoria" in df_despesas.columns else "categoria"
+            if col_cat in df_despesas.columns:
+                cats = df_despesas[col_cat].dropna().unique().tolist()
+                categorias_disponiveis += sorted(cats)
+
+        cat_quit = st.selectbox(
+            "🏷️ Categoria:",
+            options=categorias_disponiveis,
+            index=0,
+            key="cartao_quit_select_cat"
+        )
+        st.session_state["cartao_quit_categoria"] = cat_quit
 
     st.markdown("---")
     st.caption("💡 As parcelas futuras são projetadas automaticamente a partir do histórico de faturas faturadas.")
+
 
 
 def _render_sidebar_fundamentalista(df_holdings):
