@@ -1,7 +1,12 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from src.services import get_usd_brl_rate
+from src.services import (
+    get_usd_brl_rate,
+    calculate_portfolio_health_indicators,
+    generate_portfolio_health_diagnosis,
+    calculate_portfolio_rebalancing,
+)
 from src.utils.formatting import format_number
 from src.utils.logger import get_logger
 
@@ -170,6 +175,37 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         </div>
         """, unsafe_allow_html=True)
 
+    # -------------------------------------------------------------------------
+    # PAINEL DE DIAGNÓSTICO PATRIMONIAL & SAÚDE FINANCEIRA
+    # -------------------------------------------------------------------------
+    health_ind = calculate_portfolio_health_indicators(
+        df_holdings=df_holdings_filtered,
+        df_despesas=df_despesas_realized,
+        df_receitas=df_receitas_realized,
+        df_perf=st.session_state.get("df_perf", None)
+    )
+    diagnosticos_patr = generate_portfolio_health_diagnosis(health_ind)
+
+    if diagnosticos_patr:
+        st.markdown("---")
+        st.markdown("### 🎯 Diagnóstico de Saúde Patrimonial & Decisão")
+        st.caption("Visão macro de liquidez, solvência de longo prazo e preservação do poder de compra.")
+
+        cols_diag = st.columns(min(3, len(diagnosticos_patr)))
+        for idx, d_item in enumerate(diagnosticos_patr):
+            with cols_diag[idx % len(cols_diag)]:
+                val_card = "••••••" if modo_privacidade and ("R$" in str(d_item['valor']) or "meses" in str(d_item['valor'])) else d_item['valor']
+                st.markdown(
+                    f"""
+                    <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 12px; background-color: rgba(255, 255, 255, 0.03);">
+                        <div style="font-size: 1.05rem; font-weight: 600;">{d_item['icone']} {d_item['titulo']}</div>
+                        <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{val_card}</div>
+                        <div style="font-size: 0.86rem; color: #888;">{d_item['mensagem']}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
     # Gráficos da Distribuição da Carteira
     st.markdown("### 📊 Alocação de Recursos")
     
@@ -287,6 +323,27 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
             )
             st.plotly_chart(fig_pie_asset, width='stretch')
 
+        # Rebalanceamento Orientado da Carteira
+        df_rebal = calculate_portfolio_rebalancing(df_holdings_filtered)
+        if not df_rebal.empty:
+            with st.expander("⚖️ Rebalanceamento Orientado da Carteira (Sugestão de Aportes)", expanded=False):
+                st.caption("Compara a alocação atual de cada classe contra o percentual meta ideal para direcionar novos aportes com inteligência.")
+                df_rebal_display = df_rebal.copy()
+                if modo_privacidade:
+                    df_rebal_display["Valor Atual (R$)"] = "••••••"
+                    df_rebal_display["Necessidade de Aporte (R$)"] = "••••••"
+                else:
+                    df_rebal_display["Valor Atual (R$)"] = df_rebal_display["Valor Atual (R$)"].apply(
+                        lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    )
+                    df_rebal_display["Necessidade de Aporte (R$)"] = df_rebal_display["Necessidade de Aporte (R$)"].apply(
+                        lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if v > 0 else "-"
+                    )
+                df_rebal_display["Alocação Atual (%)"] = df_rebal_display["Alocação Atual (%)"].apply(lambda v: f"{v:.1f}%")
+                df_rebal_display["Alocação Meta (%)"] = df_rebal_display["Alocação Meta (%)"].apply(lambda v: f"{v:.1f}%")
+                df_rebal_display["Desvio (%)"] = df_rebal_display["Desvio (%)"].apply(lambda v: f"{v:+.1f}%")
+
+                st.dataframe(df_rebal_display, width='stretch', hide_index=True)
 
     # Gráfico Orçamentário e Proventos
     st.markdown("### 💵 Fluxo de Caixa e Proventos Passivos")

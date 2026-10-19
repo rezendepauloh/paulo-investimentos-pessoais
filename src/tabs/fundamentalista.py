@@ -1,7 +1,13 @@
 import streamlit as st
 import pandas as pd
 from src.database import db_manager
-from src.services import TERMOS_CONTABEIS, sync_fundamental_data_from_yfinance, is_valid_yfinance_ticker
+from src.services import (
+    TERMOS_CONTABEIS,
+    sync_fundamental_data_from_yfinance,
+    is_valid_yfinance_ticker,
+    calculate_fundamental_ratios,
+    generate_fundamental_diagnosis,
+)
 
 from src.utils.formatting import format_number
 from src.utils.logger import get_logger
@@ -70,6 +76,7 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                 )
     else:
         DEMO_SLUGS = {
+            "analise": "📊 Análise Contábil & Diagnóstico",
             "balanco": "Balanço Patrimonial",
             "dre": "DRE (Demonstrativo do Resultado)",
             "fluxo": "Fluxo de Caixa"
@@ -77,16 +84,16 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
         SLUG_TO_LABEL_DEMO = DEMO_SLUGS
         LABEL_TO_SLUG_DEMO = {v: k for k, v in DEMO_SLUGS.items()}
         
-        url_subtab = st.query_params.get("subtab", "balanco")
+        url_subtab = st.query_params.get("subtab", "analise")
         if url_subtab not in SLUG_TO_LABEL_DEMO:
-            url_subtab = "balanco"
+            url_subtab = "analise"
             
         current_demo_label = SLUG_TO_LABEL_DEMO[url_subtab]
         demo_labels = list(DEMO_SLUGS.values())
         default_demo_idx = demo_labels.index(current_demo_label)
 
         demo_sel = st.radio(
-            "Demonstrativo para Análise:",
+            "Visão para Análise:",
             demo_labels,
             index=default_demo_idx,
             horizontal=True,
@@ -100,11 +107,112 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
             st.rerun()
         
         demo_key = selected_demo_slug
-
         periodo_key = periodo_sel.lower()
 
-        
-        df_fundamental = db_manager.get_fundamental_data(ativo_sel, demo_key, periodo_key)
+        if demo_key == "analise":
+            # Busca Balanço, DRE e Fluxo para consolidar os índices de ADC
+            df_b = db_manager.get_fundamental_data(ativo_sel, "balanco", periodo_key)
+            df_d = db_manager.get_fundamental_data(ativo_sel, "dre", periodo_key)
+            df_f = db_manager.get_fundamental_data(ativo_sel, "fluxo", periodo_key)
+
+            if df_b.empty and df_d.empty:
+                st.warning("⚠️ Nenhum dado contábil local encontrado para gerar o diagnóstico. Atualize os dados do ativo no menu lateral.")
+            else:
+                df_ratios = calculate_fundamental_ratios(df_b, df_d, df_f)
+                diagnosticos = generate_fundamental_diagnosis(df_ratios, df_d)
+
+                st.markdown(f"### 🎯 Diagnóstico Contábil & Tomada de Decisão: **{ativo_sel}**")
+                st.caption(f"Periodicidade dos dados: **{periodo_sel}** | Metodologia baseada em Análise das Demonstrações Contábeis (ADC)")
+
+                # Exibe Scorecards de Diagnóstico Rápido
+                if diagnosticos:
+                    st.markdown("#### 🔍 Pareceres do Diagnóstico:")
+                    # Renderiza em 2 ou 3 colunas para boa leitura
+                    cols_diag = st.columns(min(3, len(diagnosticos)))
+                    for idx, diag in enumerate(diagnosticos):
+                        with cols_diag[idx % len(cols_diag)]:
+                            st.markdown(
+                                f"""
+                                <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 12px; background-color: rgba(255, 255, 255, 0.03);">
+                                    <div style="font-size: 1.1rem; font-weight: 600;">{diag['icone']} {diag['titulo']}</div>
+                                    <div style="font-size: 1.4rem; font-weight: bold; margin: 4px 0;">{diag['valor']}</div>
+                                    <div style="font-size: 0.88rem; color: #888;">{diag['mensagem']}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+
+                st.markdown("---")
+                st.markdown("#### 📈 Matriz Histórica de Indicadores Contábeis")
+
+                if not df_ratios.empty:
+                    df_display_ratios = df_ratios.copy()
+                    
+                    # Formata as colunas de data (anos ou trimestre)
+                    new_ratio_cols = []
+                    for col_date in df_display_ratios.columns:
+                        try:
+                            yr, mo, _ = str(col_date).split("-")
+                            if periodo_key == "anual":
+                                new_ratio_cols.append(yr)
+                            else:
+                                new_ratio_cols.append(f"{mo}/{yr[2:]}")
+                        except Exception:
+                            new_ratio_cols.append(str(col_date))
+                    df_display_ratios.columns = new_ratio_cols
+
+                    # Formata valores para percentual ou número
+                    def format_ratio_val(val, metric_name):
+                        if val is None or pd.isna(val):
+                            return "-"
+                        if "Margem" in metric_name or "ROE" in metric_name or "ROIC" in metric_name or "(Passivo/Ativo)" in metric_name or "(CP/Total)" in metric_name:
+                            return f"{val * 100:.2f}%"
+                        elif "FCO" in metric_name or "FCL" in metric_name:
+                            return format_number(val, is_currency=True, currency=moeda_ativo_sel, decimals=0)
+                        else:
+                            return f"{val:.2f}x"
+
+                    df_formatted = pd.DataFrame(index=df_display_ratios.index, columns=df_display_ratios.columns)
+                    for metric in df_display_ratios.index:
+                        for col in df_display_ratios.columns:
+                            df_formatted.loc[metric, col] = format_ratio_val(df_display_ratios.loc[metric, col], metric)
+
+                    # Separação temática em Abas visuais
+                    tab_liq, tab_endiv, tab_rent, tab_caixa = st.tabs([
+                        "💧 Liquidez", 
+                        "⚖️ Estrutura & Solvência", 
+                        "💰 Rentabilidade & Margens", 
+                        "💵 Fluxo de Caixa"
+                    ])
+
+                    with tab_liq:
+                        sub_liq = ["Liquidez Corrente", "Liquidez Seca", "Liquidez Imediata"]
+                        st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_liq)], width='stretch')
+                        st.caption("• **Liquidez Corrente:** Ativo Circulante / Passivo Circulante (Ideal > 1.0x)")
+                        st.caption("• **Liquidez Seca:** (Ativo Circulante - Estoques) / Passivo Circulante")
+                        st.caption("• **Liquidez Imediata:** Caixa e Equivalentes / Passivo Circulante")
+
+                    with tab_endiv:
+                        sub_endiv = ["Endividamento Geral (Passivo/Ativo)", "Composição do Endividamento (CP/Total)", "Dívida Líquida / EBITDA", "Imobilização do PL"]
+                        st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_endiv)], width='stretch')
+                        st.caption("• **Dívida Líquida / EBITDA:** Mede em quantos anos a geração de caixa operacional quitaria a dívida líquida total.")
+                        st.caption("• **Composição do Endividamento:** Proporção de dívida de curto prazo sobre o endividamento total.")
+
+                    with tab_rent:
+                        sub_rent = ["Margem Bruta", "Margem EBITDA", "Margem Líquida", "Giro do Ativo", "ROE (Retorno s/ Patrimônio Líquido)", "ROIC Estimado"]
+                        st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_rent)], width='stretch')
+                        st.caption("• **ROE:** Lucro Líquido / Patrimônio Líquido (Taxa de retorno do capital próprio).")
+                        st.caption("• **ROIC:** Retorno sobre o Capital Total Investido.")
+
+                    with tab_caixa:
+                        sub_caixa = ["FCO (Geração de Caixa Operacional)", "FCL (Fluxo de Caixa Livre)"]
+                        st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_caixa)], width='stretch')
+                        st.caption("• **FCO:** Caixa real gerado pelas operações do negócio.")
+                        st.caption("• **FCL:** Caixa livre remanescente após investimentos em bens de capital (CapEx).")
+                else:
+                    st.info("Dados insuficientes nos demonstrativos para gerar os indicadores da matriz contábil.")
+        else:
+            df_fundamental = db_manager.get_fundamental_data(ativo_sel, demo_key, periodo_key)
         
         if df_fundamental.empty:
             st.warning("⚠️ Nenhum dado contábil local encontrado para este ativo. Clique em **Atualizar Dados do Ativo** acima para carregar as informações históricas do Yahoo Finance.")

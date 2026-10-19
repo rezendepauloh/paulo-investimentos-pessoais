@@ -30,7 +30,18 @@ from .ai_allocator import generate_allocation_tips
 from .deduplication import generate_transaction_hash, identify_duplicates
 from .ingestion_parser import parse_ofx, parse_csv, parse_receipt_image
 from .parsers import parse_bank_file, get_parser, UI_INSTITUTION_OPTIONS, get_institution_guidelines
-from .credit_card_projection import calculate_credit_card_projections, extract_installment_info
+from .credit_card_projection import (
+    calculate_credit_card_projections,
+    extract_installment_info,
+    calculate_credit_card_health_indicators,
+    generate_credit_card_diagnosis,
+)
+from .fundamental_analysis import calculate_fundamental_ratios, generate_fundamental_diagnosis
+from .portfolio_health import (
+    calculate_portfolio_health_indicators,
+    generate_portfolio_health_diagnosis,
+    calculate_portfolio_rebalancing,
+)
 from .pluggy_service import PluggyService
 
 __all__ = [
@@ -66,6 +77,13 @@ __all__ = [
     "get_parser",
     "UI_INSTITUTION_OPTIONS",
     "get_institution_guidelines",
+    "calculate_fundamental_ratios",
+    "generate_fundamental_diagnosis",
+    "calculate_credit_card_health_indicators",
+    "generate_credit_card_diagnosis",
+    "calculate_portfolio_health_indicators",
+    "generate_portfolio_health_diagnosis",
+    "calculate_portfolio_rebalancing",
     "PluggyService",
 ]
 

@@ -160,7 +160,7 @@ elif current_page == "desempenho" or current_page == "📈 Desempenho e Benchmar
 elif current_page == "extratos" or current_page == "📑 Extratos e Lançamentos":
     render_tab_extratos(df_receitas, df_despesas, df_dividendos, df_orders)
 elif current_page == "cartao_credito" or current_page == "💳 Cartão & Parcelas":
-    render_tab_cartao_credito(df_despesas)
+    render_tab_cartao_credito(df_despesas, df_receitas)
 elif current_page == "fundamentalista" or current_page == "🔍 Análise Fundamentalista":
     render_tab_fundamentalista(df_holdings, df_dividendos)
 elif current_page == "consultoria_ia" or current_page == "🤖 Consultoria de Alocação com IA":
