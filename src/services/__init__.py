@@ -93,6 +93,7 @@ from .async_tasks import (
     get_task_result,
     get_task_logs,
     get_task_state,
+    clear_task_state,
 )
 
 

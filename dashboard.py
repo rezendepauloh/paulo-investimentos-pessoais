@@ -78,6 +78,8 @@ else:
         df_orders = get_orders_data(use_mock=True)
         use_mock = True
 
+    st.session_state["df_orders"] = df_orders
+
 # -----------------------------------------------------------------------------
 # CÁLCULO DE CARTEIRA E PERFORMANCE (ASSÍNCRONO & SOB DEMANDA)
 # -----------------------------------------------------------------------------

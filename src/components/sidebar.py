@@ -201,11 +201,20 @@ def _render_sidebar_desempenho(df_perf):
         st.caption("🟢 Séries do SGS/BCB sincronizadas.")
 
     if st.button("🔄 Atualizar CDI/IPCA (BCB)", use_container_width=True, type="primary" if has_bcb_issue else "secondary"):
-        with st.spinner("Limpando cache e consultando API do Banco Central..."):
+        with st.spinner("Consultando API do Banco Central e recalculando rentabilidade..."):
             try:
-                from src.services import clear_bcb_cache
+                from src.services import clear_bcb_cache, get_historical_performance
+                from src.services.async_tasks import set_task_result
                 clear_bcb_cache()
-                st.success("✅ Cache limpo! Recarregando dados oficiais...")
+                
+                # Se ordens estiverem disponíveis no session_state, recalcula imediatamente a performance
+                df_orders_ref = st.session_state.get("df_orders")
+                if df_orders_ref is not None and not df_orders_ref.empty:
+                    novo_df_perf = get_historical_performance(df_orders_ref)
+                    set_task_result("calculo_performance", novo_df_perf)
+                    st.session_state["df_perf"] = novo_df_perf
+                    
+                st.success("✅ Séries do Banco Central e curvas de rentabilidade atualizadas!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao atualizar: {e}")

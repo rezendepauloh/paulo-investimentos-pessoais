@@ -22,35 +22,64 @@ def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
     end_str = end_date.strftime("%d/%m/%Y")
     
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json&dataInicial={start_str}&dataFinal={end_str}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=headers, timeout=30)
         if response.status_code == 200:
             data = response.json()
-            if not data:
-                return pd.Series(dtype=float)
-            
-            df = pd.DataFrame(data)
-            df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
-            df["valor"] = df["valor"].astype(float) / 100.0  # CDI é expresso em porcentagem diária (ex: 0.0412%)
-            
-            df = df.sort_values("data").reset_index(drop=True)
-            # Fator de acumulação: prod(1 + cdi_diario)
-            df["fator_acumulado"] = (1.0 + df["valor"]).cumprod()
-            
-            # Indexa por data e reamostra para ter todos os dias corridos preenchendo com ffill
-            df.set_index("data", inplace=True)
-            df = df.reindex(pd.date_range(start=start_date, end=end_date), method="ffill")
-            # Caso os primeiros dias sejam NaN por falta de dados de feriado/fim de semana
-            df["fator_acumulado"] = df["fator_acumulado"].ffill().bfill().fillna(1.0)
-            
-            st.session_state["bcb_cdi_status"] = "OK"
-            return df["fator_acumulado"]
+            if data:
+                df = pd.DataFrame(data)
+                df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
+                df["valor"] = df["valor"].astype(float) / 100.0  # CDI é expresso em porcentagem diária (ex: 0.0412%)
+                
+                df = df.sort_values("data").reset_index(drop=True)
+                # Fator de acumulação: prod(1 + cdi_diario)
+                df["fator_acumulado"] = (1.0 + df["valor"]).cumprod()
+                
+                # Indexa por data e reamostra para ter todos os dias corridos preenchendo com ffill
+                df.set_index("data", inplace=True)
+                df = df.reindex(pd.date_range(start=start_date, end=end_date), method="ffill")
+                # Caso os primeiros dias sejam NaN por falta de dados de feriado/fim de semana
+                df["fator_acumulado"] = df["fator_acumulado"].ffill().bfill().fillna(1.0)
+                
+                # Persiste CDI diário no SQLite para resiliência offline definitiva
+                try:
+                    prices_list = [("BCB_CDI_FACTOR", ts.strftime("%Y-%m-%d"), float(val)) for ts, val in df["fator_acumulado"].items()]
+                    db_manager.save_historical_prices(prices_list)
+                except Exception as save_err:
+                    logger.debug(f"Não foi possível salvar cache local de CDI no SQLite: {save_err}")
+                
+                try:
+                    st.session_state["bcb_cdi_status"] = "OK"
+                except Exception:
+                    pass
+                return df["fator_acumulado"]
     except Exception as e:
         logger.warning(f"Não foi possível obter os dados do CDI da API do Banco Central: {e}")
-        st.session_state["bcb_cdi_status"] = f"TIMEOUT: {e}"
+        try:
+            st.session_state["bcb_cdi_status"] = f"TIMEOUT: {e}"
+        except Exception:
+            pass
+
+    # Fallback 1: Tenta recuperar o histórico oficial previamente salvo no SQLite
+    try:
+        conn = db_manager.get_db_connection()
+        df_saved = pd.read_sql_query(
+            "SELECT data, preco_fechamento FROM precos_historicos WHERE ticker = 'BCB_CDI_FACTOR' ORDER BY data",
+            conn
+        )
+        conn.close()
+        if not df_saved.empty:
+            df_saved["data"] = pd.to_datetime(df_saved["data"])
+            df_saved = df_saved.set_index("data").reindex(pd.date_range(start=start_date, end=end_date)).ffill().bfill()
+            if not df_saved.empty and not df_saved["preco_fechamento"].isna().all():
+                logger.info("Recuperado CDI oficial a partir do cache local SQLite.")
+                return df_saved["preco_fechamento"]
+    except Exception as ex_db:
+        logger.debug(f"Falha ao ler cache local SQLite de CDI: {ex_db}")
         
-    # Fallback aproximado (11% ao ano constante de CDI caso a API falhe)
+    # Fallback 2: Taxa anual de ~11% ao ano calculada sobre 252 dias úteis
     dates = pd.date_range(start=start_date, end=end_date)
     daily_rate = (1.11) ** (1/252) - 1.0
     fator = (1.0 + daily_rate) ** np.arange(1, len(dates) + 1)
@@ -66,33 +95,62 @@ def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
     end_str = end_date.strftime("%d/%m/%Y")
     
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados?formato=json&dataInicial={start_str}&dataFinal={end_str}"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=headers, timeout=30)
         if response.status_code == 200:
             data = response.json()
-            if not data:
-                return pd.Series(dtype=float)
+            if data:
+                df = pd.DataFrame(data)
+                df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
+                df["valor"] = df["valor"].astype(float) / 100.0  # IPCA é variação percentual mensal
                 
-            df = pd.DataFrame(data)
-            df["data"] = pd.to_datetime(df["data"], format="%d/%m/%Y")
-            df["valor"] = df["valor"].astype(float) / 100.0  # IPCA é variação percentual mensal
-            
-            df = df.sort_values("data").reset_index(drop=True)
-            df["fator_acumulado"] = (1.0 + df["valor"]).cumprod()
-            
-            df.set_index("data", inplace=True)
-            # Reamostra diariamente e preenche com ffill
-            df = df.reindex(pd.date_range(start=start_date, end=end_date), method="ffill")
-            df["fator_acumulado"] = df["fator_acumulado"].ffill().bfill().fillna(1.0)
-            
-            st.session_state["bcb_ipca_status"] = "OK"
-            return df["fator_acumulado"]
+                df = df.sort_values("data").reset_index(drop=True)
+                df["fator_acumulado"] = (1.0 + df["valor"]).cumprod()
+                
+                df.set_index("data", inplace=True)
+                # Reamostra diariamente e preenche com ffill
+                df = df.reindex(pd.date_range(start=start_date, end=end_date), method="ffill")
+                df["fator_acumulado"] = df["fator_acumulado"].ffill().bfill().fillna(1.0)
+                
+                # Persiste IPCA no SQLite
+                try:
+                    prices_list = [("BCB_IPCA_FACTOR", ts.strftime("%Y-%m-%d"), float(val)) for ts, val in df["fator_acumulado"].items()]
+                    db_manager.save_historical_prices(prices_list)
+                except Exception as save_err:
+                    logger.debug(f"Não foi possível salvar cache local de IPCA no SQLite: {save_err}")
+                
+                try:
+                    st.session_state["bcb_ipca_status"] = "OK"
+                except Exception:
+                    pass
+                return df["fator_acumulado"]
     except Exception as e:
         logger.warning(f"Não foi possível obter os dados do IPCA da API do Banco Central: {e}")
-        st.session_state["bcb_ipca_status"] = f"TIMEOUT: {e}"
+        try:
+            st.session_state["bcb_ipca_status"] = f"TIMEOUT: {e}"
+        except Exception:
+            pass
+
+    # Fallback 1: Tenta recuperar do SQLite local
+    try:
+        conn = db_manager.get_db_connection()
+        df_saved = pd.read_sql_query(
+            "SELECT data, preco_fechamento FROM precos_historicos WHERE ticker = 'BCB_IPCA_FACTOR' ORDER BY data",
+            conn
+        )
+        conn.close()
+        if not df_saved.empty:
+            df_saved["data"] = pd.to_datetime(df_saved["data"])
+            df_saved = df_saved.set_index("data").reindex(pd.date_range(start=start_date, end=end_date)).ffill().bfill()
+            if not df_saved.empty and not df_saved["preco_fechamento"].isna().all():
+                logger.info("Recuperado IPCA oficial a partir do cache local SQLite.")
+                return df_saved["preco_fechamento"]
+    except Exception as ex_db:
+        logger.debug(f"Falha ao ler cache local SQLite de IPCA: {ex_db}")
         
-    # Fallback aproximado (4.5% ao ano constante de IPCA caso a API falhe)
+    # Fallback 2: IPCA anualizado em 4.5%
     dates = pd.date_range(start=start_date, end=end_date)
     daily_rate = (1.045) ** (1/365) - 1.0
     fator = (1.0 + daily_rate) ** np.arange(1, len(dates) + 1)
@@ -105,10 +163,18 @@ def clear_bcb_cache():
     get_historical_cdi.clear()
     get_historical_ipca.clear()
     get_historical_performance.clear()
+    
+    # Limpa o resultado da tarefa assíncrona em segundo plano para forçar recálculo imediato
+    from src.services.async_tasks import clear_task_state
+    clear_task_state("calculo_performance")
+
     if "bcb_cdi_status" in st.session_state:
         del st.session_state["bcb_cdi_status"]
     if "bcb_ipca_status" in st.session_state:
         del st.session_state["bcb_ipca_status"]
+    if "df_perf" in st.session_state:
+        del st.session_state["df_perf"]
+
     logger.info("Cache de CDI, IPCA e Performance limpos para re-tentativa.")
 
 

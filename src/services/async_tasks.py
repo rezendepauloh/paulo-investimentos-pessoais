@@ -41,6 +41,30 @@ def get_task_result(task_id: str) -> Any:
     state = get_task_state(task_id)
     return state.get("result")
 
+def clear_task_state(task_id: str) -> None:
+    """Remove a tarefa do registro global para forçar recálculo ou reset."""
+    with _LOCK:
+        if task_id in _TASKS:
+            del _TASKS[task_id]
+
+def set_task_result(task_id: str, result: Any) -> None:
+    """Define diretamente o resultado da tarefa no registro global."""
+    with _LOCK:
+        if task_id not in _TASKS:
+            _TASKS[task_id] = {
+                "status": "completed",
+                "running": False,
+                "result": result,
+                "error": None,
+                "logs": ["✅ Resultado atualizado diretamente."],
+                "start_time": time.time(),
+                "end_time": time.time(),
+            }
+        else:
+            _TASKS[task_id]["result"] = result
+            _TASKS[task_id]["running"] = False
+            _TASKS[task_id]["status"] = "completed"
+
 def get_task_logs(task_id: str, max_lines: int = 15) -> str:
     """Retorna as últimas N linhas de log da tarefa."""
     state = get_task_state(task_id)
