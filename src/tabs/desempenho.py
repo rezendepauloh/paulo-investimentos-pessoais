@@ -31,11 +31,17 @@ def render_tab_desempenho(df_perf):
         elif days_option == "Último mês":
             df_chart = df_chart[df_chart.index >= max_date - pd.Timedelta(days=30)]
         
-    # Garante que os retornos comecem em 0% no período selecionado
+    # Garante que os retornos comecem em 0% no período selecionado utilizando encadeamento geométrico correto
     comparison_columns = [c for c in df_chart.columns if "Acumulado (%)" in c]
     for col in comparison_columns:
         base_val = df_chart[col].iloc[0]
-        df_chart[f"{col} Ajustado"] = df_chart[col] - base_val
+        # Rentabilidade geométrica: ((1 + R_t) / (1 + R_0) - 1) * 100
+        # Evita divisão por zero caso base_val seja -100%
+        denom = 1.0 + (base_val / 100.0)
+        if abs(denom) > 1e-6:
+            df_chart[f"{col} Ajustado"] = (((1.0 + (df_chart[col] / 100.0)) / denom) - 1.0) * 100.0
+        else:
+            df_chart[f"{col} Ajustado"] = df_chart[col] - base_val
         
     fig_perf = go.Figure()
     
