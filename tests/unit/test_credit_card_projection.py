@@ -7,7 +7,9 @@ import unittest
 import pandas as pd
 from src.services.credit_card_projection import (
     extract_installment_info,
-    calculate_credit_card_projections
+    calculate_credit_card_projections,
+    calculate_credit_card_health_indicators,
+    generate_credit_card_diagnosis,
 )
 
 class TestCreditCardProjection(unittest.TestCase):
@@ -87,6 +89,21 @@ class TestCreditCardProjection(unittest.TestCase):
 
         # Primeiro mês projetado é outubro/2026 (1 mês após 09/2026)
         self.assertEqual(res["resumo"]["primeiro_mes_projetado"], "10/2026")
+
+        # Testa indicadores contábeis e diagnósticos
+        df_receitas = pd.DataFrame([
+            {"Nome": "Salário", "Valor": 5000.0, "Recebido em": "05/09/2026"},
+            {"Nome": "Salário", "Valor": 5000.0, "Recebido em": "05/08/2026"},
+        ])
+        indicators = calculate_credit_card_health_indicators(df_sample, res, df_receitas)
+        self.assertAlmostEqual(indicators["taxa_comprometimento_renda"], 500.0 / 5000.0)  # 10%
+        self.assertAlmostEqual(indicators["meses_alavancagem_futura"], 4000.0 / 5000.0)   # 0.8 meses
+
+        diag = generate_credit_card_diagnosis(indicators)
+        self.assertTrue(len(diag) >= 2)
+        titulos = [d["titulo"] for d in diag]
+        self.assertIn("Comprometimento Saudável", titulos)
+        self.assertIn("Alavancagem Curta / Baixa", titulos)
 
 if __name__ == "__main__":
     unittest.main()

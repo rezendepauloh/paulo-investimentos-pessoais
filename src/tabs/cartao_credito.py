@@ -9,7 +9,11 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from src.services.credit_card_projection import calculate_credit_card_projections
+from src.services.credit_card_projection import (
+    calculate_credit_card_projections,
+    calculate_credit_card_health_indicators,
+    generate_credit_card_diagnosis,
+)
 from src.utils.formatting import format_number
 from src.utils.logger import get_logger
 
@@ -25,7 +29,7 @@ SUBTABS_CARTAO = {
 SLUG_TO_LABEL_CARTAO = SUBTABS_CARTAO
 LABEL_TO_SLUG_CARTAO = {v: k for k, v in SUBTABS_CARTAO.items()}
 
-def render_tab_cartao_credito(df_despesas: pd.DataFrame):
+def render_tab_cartao_credito(df_despesas: pd.DataFrame, df_receitas: pd.DataFrame = None):
     """
     Renderiza a interface analítica e preditiva de parcelas futuras do cartão de crédito.
     """
@@ -170,6 +174,33 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame):
 
     st.markdown("---")
     st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
+
+    # -------------------------------------------------------------------------
+    # PAINEL DE DIAGNÓSTICO DE SOLVÊNCIA & DECISÃO DO CARTÃO
+    # -------------------------------------------------------------------------
+    if selected_slug == "visao_geral":
+        indicators = calculate_credit_card_health_indicators(df_despesas, projections, df_receitas)
+        diagnosticos_cc = generate_credit_card_diagnosis(indicators)
+
+        if diagnosticos_cc:
+            st.markdown("#### 🎯 Diagnóstico de Solvência & Tomada de Decisão")
+            st.caption("Avaliação de comprometimento de renda, alavancagem de curto prazo e qualidade do endividamento.")
+            
+            cols_cc = st.columns(min(3, len(diagnosticos_cc)))
+            for idx, d_item in enumerate(diagnosticos_cc):
+                with cols_cc[idx % len(cols_cc)]:
+                    val_card = "••••••" if modo_privacidade and "R$" in str(d_item['valor']) else d_item['valor']
+                    st.markdown(
+                        f"""
+                        <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 14px; background-color: rgba(255, 255, 255, 0.03);">
+                            <div style="font-size: 1.05rem; font-weight: 600;">{d_item['icone']} {d_item['titulo']}</div>
+                            <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{val_card}</div>
+                            <div style="font-size: 0.86rem; color: #888;">{d_item['mensagem']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+            st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
     # =========================================================================
     # SUBABA 1: VISÃO GERAL & EVOLUÇÃO TEMPORAL

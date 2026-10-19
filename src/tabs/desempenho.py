@@ -92,3 +92,46 @@ def render_tab_desempenho(df_perf):
     if resumo_dados:
         st.dataframe(pd.DataFrame(resumo_dados), width='stretch', hide_index=True)
 
+    # -------------------------------------------------------------------------
+    # PAINEL CONTÁBIL DE RENTABILIDADE REAL & PODER DE COMPRA
+    # -------------------------------------------------------------------------
+    col_cart = "Retorno Carteira Acumulado (%) Ajustado"
+    col_ipca = "IPCA Acumulado (%) Ajustado"
+    col_cdi = "CDI Acumulado (%) Ajustado"
+
+    if col_cart in df_chart.columns and col_ipca in df_chart.columns:
+        ret_carteira_adj = df_chart[col_cart].iloc[-1]
+        ipca_adj = df_chart[col_ipca].iloc[-1]
+        
+        # Equação de Fisher para taxa real
+        ganho_real = ((1 + ret_carteira_adj / 100.0) / (1 + ipca_adj / 100.0) - 1) * 100.0
+
+        st.markdown("---")
+        st.markdown("#### 🎯 Diagnóstico de Poder de Compra & Rentabilidade Real")
+        st.caption("Avaliação contábil se o patrimônio investido superou a perda inflacionária (IPCA) e o custo de oportunidade (CDI).")
+
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric(
+                "Ganho Real da Carteira",
+                f"{ganho_real:+.2f}%",
+                help="Rentabilidade descontada da inflação calculada pela Equação de Fisher: ((1 + R_nominal)/(1 + IPCA) - 1)."
+            )
+        with c2:
+            st.metric(
+                "Inflação Acumulada (IPCA)",
+                f"{ipca_adj:+.2f}%",
+                help="Variação acumulada do índice oficial de inflação (IPCA do Banco Central) no mesmo período."
+            )
+        with c3:
+            if col_cdi in df_chart.columns:
+                cdi_adj = df_chart[col_cdi].iloc[-1]
+                pct_cdi = (ret_carteira_adj / cdi_adj * 100.0) if cdi_adj != 0 else 0.0
+                st.metric(
+                    "Percentual do CDI",
+                    f"{pct_cdi:.1f}% CDI",
+                    help="Rendimento da carteira comparado à taxa básica pós-fixada no período."
+                )
+            else:
+                st.metric("CDI", "-")
+
