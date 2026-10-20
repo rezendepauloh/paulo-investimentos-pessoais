@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from src.database import db_manager
 from src.services import (
     TERMOS_CONTABEIS,
@@ -177,6 +178,53 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                         for col in df_display_ratios.columns:
                             df_formatted.loc[metric, col] = format_ratio_val(df_display_ratios.loc[metric, col], metric)
 
+                    # Inverte a ordem das colunas para os gráficos ficarem cronológicos (do passado para o presente)
+                    chart_cols = list(df_display_ratios.columns)[::-1]
+
+                    def create_ratio_line_chart(metrics_map, title, yaxis_title, is_pct=False, ref_line=None, ref_label=""):
+                        fig = go.Figure()
+                        for m_key, m_meta in metrics_map.items():
+                            if m_key in df_display_ratios.index:
+                                y_vals = []
+                                for c in chart_cols:
+                                    v = df_display_ratios.loc[m_key, c]
+                                    if v is not None and not pd.isna(v):
+                                        y_vals.append(v * 100.0 if is_pct else v)
+                                    else:
+                                        y_vals.append(None)
+                                fig.add_trace(go.Scatter(
+                                    x=chart_cols,
+                                    y=y_vals,
+                                    mode='lines+markers',
+                                    name=m_meta.get("label", m_key),
+                                    line=dict(color=m_meta.get("color", "#00E676"), width=m_meta.get("width", 3)),
+                                    marker=dict(size=7),
+                                    hovertemplate=f"<b>{m_meta.get('label', m_key)}</b><br>%{{x}}: %{{y:.2f}}" + ("%" if is_pct else "x") + "<extra></extra>"
+                                ))
+                        if ref_line is not None:
+                            fig.add_hline(
+                                y=ref_line, 
+                                line_dash="dash", 
+                                line_color="rgba(255, 255, 255, 0.4)", 
+                                annotation_text=ref_label, 
+                                annotation_position="bottom right"
+                            )
+                        fig.update_layout(
+                            title=dict(text=title, font=dict(size=14, color="#e0e0e0")),
+                            hovermode="x unified",
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(255,255,255,0.02)",
+                            font_color="#ffffff",
+                            xaxis_title="Período",
+                            yaxis_title=yaxis_title,
+                            xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)"),
+                            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)", ticksuffix="%" if is_pct else ""),
+                            margin=dict(l=40, r=20, t=60, b=40),
+                            height=340
+                        )
+                        return fig
+
                     # Separação temática em Abas visuais
                     tab_liq, tab_endiv, tab_rent, tab_caixa = st.tabs([
                         "💧 Liquidez", 
@@ -189,6 +237,21 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                         sub_liq = ["Liquidez Corrente", "Liquidez Seca", "Liquidez Imediata"]
                         st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_liq)], width='stretch')
                         
+                        # Gráfico Evolutivo de Índices de Liquidez
+                        fig_liq = create_ratio_line_chart(
+                            {
+                                "Liquidez Corrente": {"label": "Liquidez Corrente", "color": "#00E5FF", "width": 3},
+                                "Liquidez Seca": {"label": "Liquidez Seca", "color": "#FFC107", "width": 2},
+                                "Liquidez Imediata": {"label": "Liquidez Imediata", "color": "#00E676", "width": 2}
+                            },
+                            title=f"Evolução dos Índices de Liquidez - {ativo_sel}",
+                            yaxis_title="Índice (x)",
+                            is_pct=False,
+                            ref_line=1.0,
+                            ref_label="Nível Seguro (1,00x)"
+                        )
+                        st.plotly_chart(fig_liq, use_container_width=True)
+
                         with st.expander("📚 **Fórmulas e Fundamentos de Liquidez (ADC)**", expanded=False):
                             c1, c2, c3 = st.columns(3)
                             with c1:
@@ -208,6 +271,32 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                         sub_endiv = ["Endividamento Geral (Passivo/Ativo)", "Composição do Endividamento (CP/Total)", "Dívida Líquida / EBITDA", "Imobilização do PL"]
                         st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_endiv)], width='stretch')
                         
+                        col_g1, col_g2 = st.columns(2)
+                        with col_g1:
+                            fig_endiv = create_ratio_line_chart(
+                                {
+                                    "Endividamento Geral (Passivo/Ativo)": {"label": "Endividamento Geral", "color": "#FF5252", "width": 3},
+                                    "Composição do Endividamento (CP/Total)": {"label": "Composição CP", "color": "#FF9100", "width": 2}
+                                },
+                                title="Perfil e Composição do Endividamento",
+                                yaxis_title="Percentual (%)",
+                                is_pct=True
+                            )
+                            st.plotly_chart(fig_endiv, use_container_width=True)
+
+                        with col_g2:
+                            fig_alav = create_ratio_line_chart(
+                                {
+                                    "Dívida Líquida / EBITDA": {"label": "Dívida Líq. / EBITDA", "color": "#E040FB", "width": 3}
+                                },
+                                title="Alavancagem Financeira (Dív. Líq. / EBITDA)",
+                                yaxis_title="Múltiplo (anos)",
+                                is_pct=False,
+                                ref_line=2.5,
+                                ref_label="Limite Prudencial (2,5x)"
+                            )
+                            st.plotly_chart(fig_alav, use_container_width=True)
+
                         with st.expander("📚 **Fórmulas e Fundamentos de Estrutura & Solvência (ADC)**", expanded=False):
                             c1, c2 = st.columns(2)
                             with c1:
@@ -231,6 +320,34 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                         sub_rent = ["Margem Bruta", "Margem EBITDA", "Margem Líquida", "Giro do Ativo", "ROE (Retorno s/ Patrimônio Líquido)", "ROIC Estimado"]
                         st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_rent)], width='stretch')
                         
+                        col_r1, col_r2 = st.columns(2)
+                        with col_r1:
+                            fig_margens = create_ratio_line_chart(
+                                {
+                                    "Margem Bruta": {"label": "Margem Bruta", "color": "#00E676", "width": 2},
+                                    "Margem EBITDA": {"label": "Margem EBITDA", "color": "#FFC107", "width": 3},
+                                    "Margem Líquida": {"label": "Margem Líquida", "color": "#00E5FF", "width": 2}
+                                },
+                                title="Evolução das Margens Operacionais",
+                                yaxis_title="Margem (%)",
+                                is_pct=True
+                            )
+                            st.plotly_chart(fig_margens, use_container_width=True)
+
+                        with col_r2:
+                            fig_retorno = create_ratio_line_chart(
+                                {
+                                    "ROE (Retorno s/ Patrimônio Líquido)": {"label": "ROE", "color": "#E040FB", "width": 3},
+                                    "ROIC Estimado": {"label": "ROIC", "color": "#E91E63", "width": 2}
+                                },
+                                title="Rentabilidade do Capital (ROE vs ROIC)",
+                                yaxis_title="Retorno (%)",
+                                is_pct=True,
+                                ref_line=10.0,
+                                ref_label="Benchmark Mínimo (10%)"
+                            )
+                            st.plotly_chart(fig_retorno, use_container_width=True)
+
                         with st.expander("📚 **Fórmulas e Fundamentos de Rentabilidade & Margens (ADC)**", expanded=False):
                             c1, c2, c3 = st.columns(3)
                             with c1:
@@ -262,6 +379,39 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                         sub_caixa = ["FCO (Geração de Caixa Operacional)", "FCL (Fluxo de Caixa Livre)"]
                         st.dataframe(df_formatted.loc[df_formatted.index.intersection(sub_caixa)], width='stretch')
                         
+                        # Gráfico de Barras Agrupadas para Fluxo de Caixa (FCO vs FCL)
+                        fig_caixa = go.Figure()
+                        for c_key, c_meta in [("FCO (Geração de Caixa Operacional)", {"label": "FCO (Operacional)", "color": "#00E5FF"}),
+                                              ("FCL (Fluxo de Caixa Livre)", {"label": "FCL (Livre)", "color": "#00E676"})]:
+                            if c_key in df_display_ratios.index:
+                                y_vals = []
+                                for c in chart_cols:
+                                    v = df_display_ratios.loc[c_key, c]
+                                    y_vals.append(v if v is not None and not pd.isna(v) else 0.0)
+                                fig_caixa.add_trace(go.Bar(
+                                    x=chart_cols,
+                                    y=y_vals,
+                                    name=c_meta["label"],
+                                    marker_color=c_meta["color"],
+                                    hovertemplate=f"<b>{c_meta['label']}</b><br>%{{x}}: %{{y:,.0f}}<extra></extra>"
+                                ))
+                        fig_caixa.update_layout(
+                            barmode='group',
+                            title=dict(text=f"Geração de Caixa: FCO vs FCL ({moeda_ativo_sel})", font=dict(size=14, color="#e0e0e0")),
+                            hovermode="x unified",
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(255,255,255,0.02)",
+                            font_color="#ffffff",
+                            xaxis_title="Período",
+                            yaxis_title=f"Valor ({moeda_ativo_sel})",
+                            xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)"),
+                            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)"),
+                            margin=dict(l=40, r=20, t=60, b=40),
+                            height=340
+                        )
+                        st.plotly_chart(fig_caixa, use_container_width=True)
+
                         with st.expander("📚 **Fórmulas e Fundamentos de Fluxo de Caixa (ADC)**", expanded=False):
                             c1, c2 = st.columns(2)
                             with c1:

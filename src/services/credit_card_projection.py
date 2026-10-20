@@ -113,6 +113,8 @@ def calculate_credit_card_projections(df_despesas: pd.DataFrame) -> Dict[str, An
                 "valor_parcela": float(row.get("valor", 0.0)),
                 "categoria": str(row.get("categoria", "Outros")),
                 "conta_debitada": str(row.get("conta_debitada", "Cartão de crédito")),
+                "fixo_variavel": str(row.get("fixo_variavel", row.get("Fixo vs. Variável", "Variável"))),
+                "essencial_nao_essencial": str(row.get("essencial_nao_essencial", row.get("Essencial vs. Não Essencial", "Não essencial"))),
                 "is_future_single": is_future_single
             })
 
@@ -160,6 +162,8 @@ def calculate_credit_card_projections(df_despesas: pd.DataFrame) -> Dict[str, An
             "ultima_descricao": last_row["nome_original"],
             "categoria": last_row["categoria"],
             "conta": last_row["conta_debitada"],
+            "fixo_variavel": last_row.get("fixo_variavel", "Variável"),
+            "essencial_nao_essencial": last_row.get("essencial_nao_essencial", "Não essencial"),
             "parcela_atual": cur_p,
             "total_parcelas": tot_p,
             "parcelas_restantes": faltam if status_real == "Ativa" else 0,
@@ -342,11 +346,14 @@ def calculate_credit_card_health_indicators(
     # Análise Vertical de Essencialidade nas Compras Parceladas Ativas
     pct_essencial = 0.0
     pct_nao_essencial = 0.0
-    if not df_ativas.empty and "Essencial vs. Não Essencial" in df_ativas.columns:
+    col_ess = "essencial_nao_essencial" if "essencial_nao_essencial" in df_ativas.columns else "Essencial vs. Não Essencial"
+    if not df_ativas.empty and col_ess in df_ativas.columns:
         total_ativas_val = df_ativas["valor_restante"].sum()
         if total_ativas_val > 0:
-            essencial_val = df_ativas[df_ativas["Essencial vs. Não Essencial"].str.lower().str.contains("essencial") & ~df_ativas["Essencial vs. Não Essencial"].str.lower().str.contains("não")]["valor_restante"].sum()
+            s_ess = df_ativas[col_ess].astype(str).str.lower()
+            essencial_val = df_ativas[s_ess.str.contains("essencial") & ~s_ess.str.contains("não") & ~s_ess.str.contains("nao")]["valor_restante"].sum()
             pct_essencial = float(essencial_val / total_ativas_val)
+            pct_nao_essencial = max(0.0, 1.0 - pct_essencial)
     # Detecta se há compromisso de balão relevante entre as compras ativas
     balao_compromisso = None
     if not df_ativas.empty:
