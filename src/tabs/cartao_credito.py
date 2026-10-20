@@ -21,6 +21,7 @@ logger = get_logger("tabs", "cartao_credito")
 
 SUBTABS_CARTAO = {
     "visao_geral": "📊 Projeção & Visão Geral",
+    "analise_contabil": "📐 Análise Contábil & Solvência",
     "compras_ativas": "🛒 Compras Parceladas Ativas",
     "finalizacoes_mes": "🏁 Término de Parcelas & Alívio",
     "detalhes_mensais": "📅 Cronograma Mensal Futuro",
@@ -601,3 +602,331 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame, df_receitas: pd.DataFra
                 )
         else:
             st.caption("Nenhuma compra quitada catalogada com os filtros atuais.")
+
+    # =========================================================================
+    # SUBABA 5: ANÁLISE CONTÁBIL & SOLVÊNCIA DAS OBRIGAÇÕES (ADC)
+    # =========================================================================
+    elif selected_slug == "analise_contabil":
+        st.markdown("### 📐 Diagnóstico Contábil de Passivos & Tomada de Decisão Financeira")
+        st.caption("Aplicação rigorosa dos conceitos de Análise das Demonstrações Contábeis (ADC): Estrutura de Capital, Liquidez, Composição do Endividamento e Solvência Orçamentária.")
+
+        indicators_cc = calculate_credit_card_health_indicators(df_despesas, projections, df_receitas)
+        diagnosticos_cc = generate_credit_card_diagnosis(indicators_cc)
+
+        if diagnosticos_cc:
+            st.markdown("#### 🔍 Pareceres do Diagnóstico:")
+            cols_diag = st.columns(min(3, len(diagnosticos_cc)))
+            for idx, d_item in enumerate(diagnosticos_cc):
+                with cols_diag[idx % len(cols_diag)]:
+                    val_card = "••••••" if modo_privacidade and "R$" in str(d_item['valor']) else d_item['valor']
+                    st.markdown(
+                        f"""
+                        <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 14px; background-color: rgba(255, 255, 255, 0.03);">
+                            <div style="font-size: 1.05rem; font-weight: 600;">{d_item['icone']} {d_item['titulo']}</div>
+                            <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{val_card}</div>
+                            <div style="font-size: 0.86rem; color: #888;">{d_item['mensagem']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+        st.markdown("---")
+        st.markdown("#### 📈 Matriz Contábil & Indicadores de Solvência")
+
+        tab_solv, tab_perfil, tab_vert, tab_balao = st.tabs([
+            "💧 Comprometimento & Cobertura",
+            "⚖️ Estrutura & Alongamento",
+            "📊 Análise Vertical & Qualidade",
+            "🏢 Balão & Grandes Passivos"
+        ])
+
+        with tab_solv:
+            st.markdown("##### 💧 Comprometimento do Fluxo de Renda Mensal")
+            renda_est = indicators_cc.get("renda_mensal_estimada", 0.0)
+            fatura_prox = indicators_cc.get("fatura_proximo_mes", 0.0)
+            taxa_comp = indicators_cc.get("taxa_comprometimento_renda")
+            saldo_tot = indicators_cc.get("saldo_devedor_total", 0.0)
+
+            c_kpi1, c_kpi2, c_kpi3 = st.columns(3)
+            with c_kpi1:
+                r_txt = "R$ ••••••" if modo_privacidade else f"R$ {renda_est:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                st.metric("Renda Mensal Base", r_txt, help="Média mensal de receitas auferidas no período.")
+            with c_kpi2:
+                f_txt = "R$ ••••••" if modo_privacidade else f"R$ {fatura_prox:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                st.metric("Próxima Fatura (Passivo Imediato)", f_txt, help="Total das parcelas programadas para o próximo mês.")
+            with c_kpi3:
+                comp_txt = f"{taxa_comp * 100:.1f}%" if taxa_comp is not None else "N/D"
+                st.metric("Taxa de Comprometimento", comp_txt, help="Fatura / Renda Mensal. Nível saudável: até 20%.")
+
+            # Gráfico de evolução da taxa de comprometimento ao longo dos próximos meses
+            if not df_proj_mensal.empty and renda_est > 0:
+                df_curva_comp = df_proj_mensal.head(12).copy()
+                df_curva_comp["taxa_comp_pct"] = (df_curva_comp["total_mes"] / renda_est) * 100.0
+
+                fig_comp = go.Figure()
+                fig_comp.add_trace(go.Scatter(
+                    x=df_curva_comp["mes_ano"],
+                    y=df_curva_comp["taxa_comp_pct"],
+                    mode="lines+markers",
+                    name="Comprometimento da Renda (%)",
+                    line=dict(color="#00E5FF", width=3),
+                    marker=dict(size=8),
+                    hovertemplate="<b>%{x}</b><br>Comprometimento: %{y:.1f}%<extra></extra>"
+                ))
+                fig_comp.add_hline(
+                    y=20.0, line_dash="dash", line_color="#00E676",
+                    annotation_text="Teto Saudável (20%)", annotation_position="bottom right"
+                )
+                fig_comp.add_hline(
+                    y=35.0, line_dash="dot", line_color="#FF5252",
+                    annotation_text="Limite Crítico (35%)", annotation_position="top right"
+                )
+                fig_comp.update_layout(
+                    title=dict(text="Curva Projetada de Comprometimento de Renda nos Próximos Meses", font=dict(size=14, color="#e0e0e0")),
+                    hovermode="x unified",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(255,255,255,0.02)",
+                    font_color="#ffffff",
+                    xaxis_title="Mês/Ano",
+                    yaxis_title="Comprometimento (%)",
+                    xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)"),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)", ticksuffix="%"),
+                    margin=dict(l=40, r=20, t=50, b=40),
+                    height=340
+                )
+                st.plotly_chart(fig_comp, use_container_width=True)
+
+            with st.expander("📚 **Fórmulas e Fundamentos de Comprometimento & Cobertura (ADC)**", expanded=False):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("##### 💧 Índice de Comprometimento de Renda ($ICR$)")
+                    st.latex(r"ICR = \frac{\text{Fatura Mensal}}{\text{Renda Líquida Mensal}}")
+                    st.caption("Proporção do faturamento/salário absorvido por dívidas de curto prazo. Em análise financeira prudencial, deve situar-se abaixo de 20% a 25%.")
+                with c2:
+                    st.markdown("##### 🛡️ Cobertura do Passivo Circulante ($CPC$)")
+                    st.latex(r"CPC = \frac{\text{Renda Líquida} - \text{Despesas Essenciais}}{\text{Fatura do Cartão}}")
+                    st.caption("Capacidade do fluxo de caixa livre mensal absorver os compromissos parcelados sem necessidade de desinvestir ou recorrer a cheque especial.")
+
+        with tab_perfil:
+            st.markdown("##### ⚖️ Estrutura Temporal & Alongamento dos Passivos")
+            meses_alav = indicators_cc.get("meses_alavancagem_futura")
+            
+            # Cálculo de Composição do Endividamento (CP vs LP):
+            # Curto Prazo (CP): próximas 12 faturas
+            # Longo Prazo (PNC): parcelas além de 12 meses (incluindo balões)
+            if not df_proj_mensal.empty:
+                cp_val = float(df_proj_mensal.head(12)["total_mes"].sum())
+                lp_val = float(df_proj_mensal.iloc[12:]["total_mes"].sum()) if len(df_proj_mensal) > 12 else 0.0
+                total_exigivel = cp_val + lp_val
+                comp_cp_pct = (cp_val / total_exigivel * 100.0) if total_exigivel > 0 else 100.0
+                comp_lp_pct = (lp_val / total_exigivel * 100.0) if total_exigivel > 0 else 0.0
+            else:
+                cp_val, lp_val, total_exigivel, comp_cp_pct, comp_lp_pct = 0.0, 0.0, 0.0, 0.0, 0.0
+
+            c_e1, c_e2, c_e3 = st.columns(3)
+            with c_e1:
+                cp_txt = "R$ ••••••" if modo_privacidade else f"R$ {cp_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                st.metric("Passivo Circulante (Próximos 12m)", cp_txt, help="Soma das parcelas vincendas até 1 ano.")
+            with c_e2:
+                lp_txt = "R$ ••••••" if modo_privacidade else f"R$ {lp_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                st.metric("Exigível a Longo Prazo (> 12m)", lp_txt, help="Obrigações e balões com vencimento superior a 1 ano.")
+            with c_e3:
+                st.metric("Composição do Endividamento ($CE$)", f"{comp_cp_pct:.1f}% CP", help="Percentual da dívida concentrado no curto prazo.")
+
+            col_perfil1, col_perfil2 = st.columns(2)
+            with col_perfil1:
+                fig_donut = go.Figure(data=[go.Pie(
+                    labels=["Curto Prazo (≤ 12 meses)", "Longo Prazo (> 12 meses)"],
+                    values=[cp_val, lp_val],
+                    hole=0.45,
+                    marker=dict(colors=["#3B82F6", "#E040FB"]),
+                    textinfo="label+percent"
+                )])
+                fig_donut.update_layout(
+                    title=dict(text="Composição do Endividamento ($CE$)", font=dict(size=14, color="#e0e0e0")),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font_color="#ffffff",
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
+                    margin=dict(l=20, r=20, t=50, b=30),
+                    height=320
+                )
+                st.plotly_chart(fig_donut, use_container_width=True)
+
+            with col_perfil2:
+                # Gráfico de Alavancagem em meses de gastos/renda
+                ref_m = indicators_cc.get("gasto_mensal_medio", renda_est)
+                meses_alav_val = (saldo_tot / ref_m) if ref_m > 0 else 0.0
+                fig_bar_alav = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=meses_alav_val,
+                    title={'text': "Meses de Orçamento Comprometidos", 'font': {'size': 14, 'color': "#e0e0e0"}},
+                    gauge={
+                        'axis': {'range': [0, 15], 'tickwidth': 1, 'tickcolor': "white"},
+                        'bar': {'color': "#00E5FF"},
+                        'steps': [
+                            {'range': [0, 2.5], 'color': "rgba(0, 230, 118, 0.25)"},
+                            {'range': [2.5, 6.0], 'color': "rgba(255, 193, 7, 0.25)"},
+                            {'range': [6.0, 15], 'color': "rgba(255, 82, 82, 0.25)"}
+                        ],
+                        'threshold': {
+                            'line': {'color': "#FF5252", 'width': 3},
+                            'thickness': 0.75,
+                            'value': 6.0
+                        }
+                    }
+                ))
+                fig_bar_alav.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    font_color="#ffffff",
+                    margin=dict(l=30, r=30, t=50, b=20),
+                    height=320
+                )
+                st.plotly_chart(fig_bar_alav, use_container_width=True)
+
+            with st.expander("📚 **Fórmulas e Fundamentos de Estrutura de Capital (ADC)**", expanded=False):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("##### ⏳ Composição do Endividamento ($CE$)")
+                    st.latex(r"CE = \frac{\text{Passivo Circulante (CP)}}{\text{Passivo Exigível Total (CP + LP)}}")
+                    st.caption("Quanto menor o índice, mais alongado é o perfil das dívidas, reduzindo o risco de insolvência imediata.")
+                with c2:
+                    st.markdown("##### ⌛ Índice de Alavancagem em Meses ($IAM$)")
+                    st.latex(r"IAM = \frac{\text{Saldo Residual Devedor Total}}{\text{Renda ou Gasto Mensal Médio}}")
+                    st.caption("Indica quantos meses de fluxo financeiro integral seriam necessários para quitar todas as obrigações a prazo contratadas.")
+
+        with tab_vert:
+            st.markdown("##### 📊 Análise Vertical de Qualidade & Concentração dos Gastos Parcelados")
+            col_v1, col_v2 = st.columns(2)
+
+            with col_v1:
+                # Distribuição por Essencialidade
+                if not df_ativas.empty:
+                    col_ess_name = "essencial_nao_essencial" if "essencial_nao_essencial" in df_ativas.columns else "Essencial vs. Não Essencial"
+                    df_ess_agg = df_ativas.groupby(col_ess_name)["valor_restante"].sum().reset_index()
+                    fig_ess = px.pie(
+                        df_ess_agg,
+                        names=col_ess_name,
+                        values="valor_restante",
+                        color=col_ess_name,
+                        color_discrete_map={"Essencial": "#00E676", "Não essencial": "#FF5252", "Variável": "#FFC107"},
+                        hole=0.4
+                    )
+                    fig_ess.update_layout(
+                        title=dict(text="Análise Vertical: Essencial vs. Supérfluo", font=dict(size=14, color="#e0e0e0")),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ffffff",
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
+                        margin=dict(l=20, r=20, t=50, b=30),
+                        height=320
+                    )
+                    st.plotly_chart(fig_ess, use_container_width=True)
+
+            with col_v2:
+                # Distribuição por Categoria
+                if not df_ativas.empty:
+                    df_cat_agg = df_ativas.groupby("categoria")["valor_restante"].sum().reset_index().sort_values("valor_restante", ascending=False).head(5)
+                    fig_cat = px.bar(
+                        df_cat_agg,
+                        x="valor_restante",
+                        y="categoria",
+                        orientation="h",
+                        color="categoria",
+                        text_auto=False
+                    )
+                    fig_cat.update_layout(
+                        title=dict(text="Top 5 Categorias em Saldo Devedor Restante", font=dict(size=14, color="#e0e0e0")),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(255,255,255,0.02)",
+                        font_color="#ffffff",
+                        xaxis_title="Saldo Devedor (R$)",
+                        yaxis_title="Categoria",
+                        showlegend=False,
+                        xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)"),
+                        yaxis=dict(showgrid=False, autorange="reversed"),
+                        margin=dict(l=20, r=20, t=50, b=30),
+                        height=320
+                    )
+                    st.plotly_chart(fig_cat, use_container_width=True)
+
+            with st.expander("📚 **Fórmulas e Fundamentos de Análise Vertical (ADC)**", expanded=False):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.markdown("##### 📐 Análise Vertical de Passivos ($AV$)")
+                    st.latex(r"AV_i = \frac{\text{Saldo Devedor da Categoria } i}{\text{Saldo Devedor Total}} \times 100")
+                    st.caption("Identifica onde está o principal foco de alavancagem orçamentária para direcionar esforços de corte.")
+                with c2:
+                    st.markdown("##### 🎯 Índice de Qualidade da Dívida ($IQD$)")
+                    st.latex(r"IQD = \frac{\text{Parcelas em Gastos Essenciais}}{\text{Total de Parcelas Ativas}}")
+                    st.caption("Prioriza alavancagem produtiva (patrimônio, educação, saúde) em detrimento de despesas de consumo descartável.")
+
+        with tab_balao:
+            st.markdown("##### 🏢 Avaliação de Solvência para Balões & Compromissos Extraordinários")
+            balao_info = indicators_cc.get("balao_compromisso")
+
+            if balao_info:
+                v_balao = balao_info["valor"]
+                v_balao_fmt = "R$ ••••••" if modo_privacidade else f"R$ {v_balao:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                mes_venc = balao_info["mes_ano"]
+
+                col_b1, col_b2, col_b3 = st.columns(3)
+                with col_b1:
+                    st.metric("Obrigação Futura Mapeada", balao_info["nome"])
+                with col_b2:
+                    st.metric("Valor a Liquidar", v_balao_fmt)
+                with col_b3:
+                    st.metric("Data Prevista de Vencimento", mes_venc)
+
+                # Cálculo de aporte mensal necessário para cobrir o balão sem desinvestir ativos de longo prazo
+                hoje = pd.Timestamp.now().normalize()
+                try:
+                    mo_b, yr_b = mes_venc.split("/")
+                    dt_balao_target = pd.Timestamp(int(yr_b), int(mo_b), 1)
+                    meses_restantes = max(1, (dt_balao_target.year - hoje.year) * 12 + (dt_balao_target.month - hoje.month))
+                except Exception:
+                    meses_restantes = 12
+
+                aporte_sugerido = v_balao / meses_restantes
+                aporte_fmt = "R$ ••••••" if modo_privacidade else f"R$ {aporte_sugerido:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+                st.info(f"💡 **Plano de Amortização Programada (Sinking Fund):** Restam **{meses_restantes} meses** até o vencimento em **{mes_venc}**. Para liquidar a parcela balão integralmente sem recorrer a resgates patrimoniais forçados, o aporte mensal sugerido em Renda Fixa de Liquidez é de **{aporte_fmt}/mês**.")
+
+                # Gráfico de evolução do Sinking Fund vs Curva do Balão
+                meses_range = [hoje + pd.DateOffset(months=i) for i in range(meses_restantes + 1)]
+                labels_range = [m.strftime("%m/%Y") for m in meses_range]
+                fundo_acumulado = [aporte_sugerido * i for i in range(len(meses_range))]
+
+                fig_sink = go.Figure()
+                fig_sink.add_trace(go.Scatter(
+                    x=labels_range,
+                    y=fundo_acumulado,
+                    mode="lines+markers",
+                    name="Reserva Acumulada Planejada (R$)",
+                    line=dict(color="#00E676", width=3),
+                    marker=dict(size=6)
+                ))
+                fig_sink.add_hline(
+                    y=v_balao, line_dash="dash", line_color="#FF5252",
+                    annotation_text=f"Meta: {v_balao_fmt}", annotation_position="top right"
+                )
+                fig_sink.update_layout(
+                    title=dict(text="Curva de Acumulação do Fundo Amortizador (Sinking Fund)", font=dict(size=14, color="#e0e0e0")),
+                    hovermode="x unified",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(255,255,255,0.02)",
+                    font_color="#ffffff",
+                    xaxis_title="Linha do Tempo",
+                    yaxis_title="Montante (R$)",
+                    xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)"),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.07)"),
+                    margin=dict(l=40, r=20, t=50, b=40),
+                    height=320
+                )
+                st.plotly_chart(fig_sink, use_container_width=True)
+
+            else:
+                st.info("Nenhum balão ou compromisso futuro único de grande porte identificado entre as despesas.")
+
+            with st.expander("📚 **Fórmulas e Fundamentos de Sinking Fund & Gestão de Passivos Extraordinários**", expanded=False):
+                st.markdown("##### 🏛️ Fundo Amortizador ($Sinking\\ Fund$)")
+                st.latex(r"\text{Aporte Mensal} = \frac{\text{Valor Futuro da Parcela Balão}}{\text{Número de Meses até o Vencimento}}")
+                st.caption("Técnica contábil de provisionamento prévio em ativos de alta liquidez e baixo risco (CDI / Selic) para neutralizar choques de liquidez na data de quitação.")
