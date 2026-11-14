@@ -11,8 +11,6 @@ data/*.json
 certs/*.crt
 *.crt
 
-
-
 # Python e Ambientes Virtuais
 __pycache__/
 *.pyc
@@ -21,9 +19,11 @@ __pycache__/
 .venv/
 venv/
 env/
+ENV/
 *.egg-info/
 .eggs/
 .pytest_cache/
+.ipynb_checkpoints/
 
 # IDEs e Sistema
 .vscode/
@@ -33,15 +33,36 @@ Thumbs.db
 *.log
 /logs
 
-# Arquivos gerados e relatórios temporários
+# Antigravity e Ferramentas de IA
+.antigravity/
+
+# Arquivos gerados, relatórios e temporários
+dist/
+build/
+*.tmp
+*.bak
 scripts/Planilha de Ordens - Ajustada.csv
 scripts/Planilha de Ordens - Ordens.csv
 scripts/saida_ajustar_splits.md
 scripts/saida-correcao-planilha.md
 scratch/
+temp/
+temp
 
 # Banco de dados local SQLite
 data/
 *.db
+*.sqlite
 
-temp
+# Arquivos Multimídia, Documentos e Planilhas locais
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.pdf
+*.csv
+*.xlsx
+*.zip
+*.tar.gz
+*.gz

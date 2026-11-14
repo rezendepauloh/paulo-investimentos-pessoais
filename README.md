@@ -1,255 +1,262 @@
-# 📈 Painel de Finanças e Investimentos Pessoais com Streamlit & IA
+# 📈 Paulo Investimentos Pessoais — Plataforma Financeira & Inteligência Patrimonial
 
-Este projeto é um painel financeiro profissional construído em Python com **Streamlit**, integrado diretamente com planilhas de Orçamento e de Ordens do Google Sheets. A aplicação realiza o cálculo automático da evolução de patrimônio líquida e compara com os principais benchmarks nacionais e internacionais (**CDI, IPCA, Ibovespa e S&P 500**) a partir de APIs públicas em tempo real, além de fornecer dicas automatizadas de alocação de recursos usando a inteligência artificial do **Google Gemini**.
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.40+-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-Local%20Cache-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![Google Sheets](https://img.shields.io/badge/Google%20Sheets-Source%20of%20Truth-34A853?style=for-the-badge&logo=googlesheets&logoColor=white)
+![Google Gemini](https://img.shields.io/badge/Google%20Gemini-Vision%20%26%20AI-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Plotly](https://img.shields.io/badge/Plotly-Interactive%20Charts-3F4F75?style=for-the-badge&logo=plotly&logoColor=white)
+![Tests](https://img.shields.io/badge/Testes-Automated%20Suites-brightgreen?style=for-the-badge)
+
+**Plataforma analítica e orquestrador financeiro para gestão patrimonial, inteligência de alocação, rentabilidade TWR e conciliação bancária.**
+
+[Central de Documentação (Docs)](Docs/README.md) • [Diretrizes de Engenharia (AGENTS.md)](AGENTS.md) • [Guia de Deploy Docker](Docs/guias/instalacao_e_deploy_docker.md)
+
+</div>
 
 ---
 
-## 🚀 Como Executar o Projeto Localmente (Docker / WSL)
+## 📋 Sumário Executivo
 
-Requisitos: **WSL (Ubuntu)** e **Docker Desktop** (com integração WSL ativada) ou Docker Engine.
+- [1. Visão Geral](#-1-visão-geral)
+- [2. Arquitetura do Sistema](#-2-arquitetura-do-sistema)
+- [3. Módulos & Funcionalidades](#-3-módulos--funcionalidades)
+  - [3.1 Painel Patrimonial & Visão Geral](#31-painel-patrimonial--visão-geral)
+  - [3.2 Rentabilidade Histórica por Cotas (TWR) & Benchmarks](#32-rentabilidade-histórica-por-cotas-twr--benchmarks)
+  - [3.3 Extratos Analíticos, Receitas & Despesas](#33-extratos-analíticos-receitas--despesas)
+  - [3.4 Análise Fundamentalista (Ações & FIIs)](#34-análise-fundamentalista-ações--fiis)
+  - [3.5 Consultoria & Alocação Inteligente com IA](#35-consultoria--alocação-inteligente-com-ia)
+  - [3.6 Ingestão Inteligente & Conciliação Híbrida](#36-ingestão-inteligente--conciliação-híbrida)
+  - [3.7 Editor Interativo de Dados & Planilhas](#37-editor-interativo-de-dados--planilhas)
+  - [3.8 Configurações do Sistema & Diagnósticos](#38-configurações-do-sistema--diagnósticos)
+- [4. Estrutura de Diretórios](#-4-estrutura-de-diretórios)
+- [5. Como Executar (Docker Compose / WSL)](#-5-como-executar-docker-compose--wsl)
+- [6. Deep Linking & URLs Rápidas](#-6-deep-linking--urls-rápidas)
+- [7. Suíte de Testes Automatizados](#-7-suíte-de-testes-automatizados)
+- [8. Central de Documentação Técnica](#-8-central-de-documentação-técnica)
 
-### 1. Clonar ou Acessar o Diretório do Projeto no WSL
+---
 
-No seu terminal do WSL (Ubuntu):
+## 🎯 1. Visão Geral
 
-```bash
-cd ~/PythonProjects/paulo-investimentos-pessoais
+O **Paulo Investimentos Pessoais** é um ecossistema completo de engenharia financeira e inteligência patrimonial desenvolvido em **Python** com **Streamlit**, desenhado para unificar a gestão de investimentos (Ações Brasil, FIIs, Stocks/ETFs EUA e Renda Fixa) com o controle orçamentário mensal e anual.
+
+A plataforma combina a flexibilidade do **Google Sheets** (como repositório perene na nuvem) com o poder analítico e a velocidade do **SQLite local**, permitindo consolidações instantâneas, conciliações inteligentes de extratos bancários com parsers dedicados e consultoria automatizada de alocação através do **Google Gemini**.
+
+---
+
+## 🏛️ 2. Arquitetura do Sistema
+
+O ecossistema opera de forma desacoplada e 100% containerizada via **Docker Compose**:
+
+```mermaid
+flowchart TD
+    subgraph Host ["Máquina Host (Windows / WSL2 / Linux)"]
+        Browser["Navegador Web<br/>(Porta 8502)"]
+        Launcher["00-iniciar.sh / 00-iniciar.cmd"]
+    end
+
+    subgraph DockerCompose ["Docker Compose Stack"]
+        subgraph AppContainer ["paulo-investimentos-app (Python 3.12-slim)"]
+            ST["Interface Web Streamlit (dashboard.py)"]
+            DL["Data Loader & Delta Sync"]
+            Analytics["Motor de Rentabilidade TWR"]
+            Parsers["Dispatcher de Parsers Dedicados"]
+            AI["Agente IA (Gemini Vision + Alocação)"]
+        end
+
+        subgraph Storage ["Persistência Local (Volumes data/)"]
+            DB[("SQLite Cache Local<br/>(investimentos.db / financas.db)")]
+            Creds["credentials.json (OAuth Google)"]
+        end
+    end
+
+    subgraph Cloud ["Serviços Externos & Nuvem"]
+        Sheets["Google Sheets API (gspread)"]
+        YF["Yahoo Finance (Cotações & Splits)"]
+        Pluggy["Open Finance Pluggy"]
+        BCB["Banco Central (CDI / IPCA)"]
+    end
+
+    Browser -->|HTTP :8502| ST
+    Launcher -->|docker compose up| AppContainer
+    AppContainer --> DB
+    AppContainer --> Creds
+    AppContainer --> Sheets
+    AppContainer --> YF
+    AppContainer --> Pluggy
+    AppContainer --> BCB
 ```
 
-### 2. Configurar as Variáveis de Ambiente
+---
 
-Crie o arquivo `.env` a partir do modelo `.env.example`:
+## 🚀 3. Módulos & Funcionalidades
+
+### 3.1 Painel Patrimonial & Visão Geral
+- Saldo patrimonial líquido total e consolidação em moeda corrente nacional (**BRL**) com conversão cambial dinâmica em tempo real para ativos internacionais.
+- Distribuição por classe de ativos (Ações BR, FIIs, Stocks/ETFs EUA, Renda Fixa) em gráficos interativos de pizza/treemap via Plotly.
+- Indicadores de fluxo de caixa orçamentário, metas anuais e acompanhamento de aportes.
+
+### 3.2 Rentabilidade Histórica por Cotas (TWR) & Benchmarks
+- Rentabilidade calculada pela metodologia oficial **Time-Weighted Rate of Return (TWR)**, eliminando distorções de entradas e saídas de caixa.
+- Reconciliação automática de desdobramentos (*splits*) e grupamentos de ações da B3.
+- Comparativo direto da curva de patrimônio contra benchmarks oficiais: **CDI, IPCA, IPCA+6%, Ibovespa (^BVSP) e S&P 500 (^GSPC)**.
+
+### 3.3 Extratos Analíticos, Receitas & Despesas
+- Filtragem avançada e visualização analítica por subabas: receitas, despesas, dividendos/JCP e ordens de compra/venda.
+- Visualização por competência temporal, contas e centros de custo.
+
+### 3.4 Análise Fundamentalista (Ações & FIIs)
+- Balanço Patrimonial, DRE e Fluxo de Caixa histórico importados automaticamente via `yfinance` para múltiplos anos e trimestres.
+- Indicadores múltiplos de valuation (P/L, P/VP, Dividend Yield, ROE, Dívida Líquida/EBITDA).
+
+### 3.5 Consultoria & Alocação Inteligente com IA
+- Recomendações didáticas e alocação de carteira orientadas por princípios financeiros modernos de diversificação.
+- Análise de balanceamento de risco/retorno apoiada pela API do **Google Gemini**.
+
+### 3.6 Ingestão Inteligente & Conciliação Híbrida
+- **OCR Multimodal:** Leitura de comprovantes de pagamento e Pix via **Gemini Vision** com parsing estruturado via Pydantic.
+- **Parsers Dedicados por Banco:** Padrão Strategy para arquivos `.OFX` e `.CSV` com regras específicas de sinais e cabeçalhos para:
+  - 🏦 Sicredi, Banco Inter, C6 Bank, Nubank, 99 Pay, Mercado Pago, XP/B3 e Cartões de Loja (Vuon/Renner).
+- **Detecção de Duplicidades:** Assinatura digital SHA-256 por transação para identificação de lançamentos repetidos no `st.data_editor`.
+
+### 3.7 Editor Interativo de Dados & Planilhas
+- Grade editável (`st.data_editor`) para revisão, ajuste em lote e conciliação direta com gravação atômica no SQLite e Google Sheets.
+
+### 3.8 Configurações do Sistema & Diagnósticos
+- Monitoramento de status de conexões e APIs (Google Sheets, Gemini, Pluggy, Yahoo Finance).
+- Diagnóstico de consistência contábil e disparadores de sincronização manual.
+
+---
+
+## 📁 4. Estrutura de Diretórios
+
+```text
+paulo-investimentos-pessoais/
+├── 00-iniciar.cmd              # Atalho de execução rápida para Windows
+├── 00-iniciar.sh               # Inicializador para Linux / WSL (Docker Compose)
+├── AGENTS.md                   # Diretrizes universais para agentes autônomos
+├── dashboard.py                # Ponto de entrada e orquestrador principal do Streamlit
+├── Dockerfile                  # Container Python 3.12-slim-bookworm otimizado
+├── docker-compose.yml          # Orquestração do app Streamlit de desenvolvimento (porta 8502)
+├── docker-compose.server.yml   # Orquestração para servidor de produção / homelab
+├── requirements.txt            # Dependências gerenciadas
+├── cspell.json                 # Dicionário do verificador ortográfico
+│
+├── Docs/                       # 📚 Central Unificada de Documentação Técnica
+│   ├── README.md               # Índice mestre navegável com hyperlinks
+│   ├── arquitetura/            # Dossiê de arquitetura, banco híbrido, TWR e parsers
+│   ├── guias/                  # Deploy Docker, Google Sheets, conciliação e manutenção
+│   ├── testes/                 # Guia da suíte de testes automatizados
+│   └── issues/                 # Backlog oficial e histórico de entregas
+│
+├── assets/                     # Recursos visuais e estilização
+│   └── css/styles.css          # Design system, glassmorphism e tema escuro
+│
+├── data/                       # Armazenamento local de credenciais e bancos
+│   ├── credentials.json        # Chave de Serviço Google Cloud (ignorado no Git)
+│   ├── investimentos.db        # Banco de dados local SQLite
+│   └── financas.db             # Banco de dados complementar SQLite
+│
+├── logs/                       # Logs rotativos particionados (3MB, máx 3 backups)
+│   ├── app/                    # Ciclo de vida e eventos gerais
+│   ├── components/             # Eventos do header e barra lateral
+│   ├── database/               # Logs de transações e delta sync do SQLite
+│   ├── services/               # Logs de conectores externos e APIs
+│   └── tabs/                   # Logs específicos de cada aba/módulo
+│
+├── src/                        # Código-fonte modular da aplicação
+│   ├── components/             # Componentes de UI reutilizáveis (header, sidebar)
+│   ├── database/               # Camada de persistência SQLite (db_manager.py)
+│   ├── services/               # Motores de cálculo, conectores e inteligência
+│   │   ├── parsers/            # Parsers dedicados por instituição bancária
+│   │   ├── data_loader.py      # Carga e sanitização Google Sheets / SQLite
+│   │   ├── analytics.py        # Motor de cálculos TWR, cotações e benchmarks
+│   │   ├── ai_allocator.py     # Consultoria e otimização de carteira via Gemini
+│   │   ├── deduplication.py    # Gerador de hash SHA-256 e detector de duplicidades
+│   │   ├── ingestion_parser.py # Ingestão de extratos OFX, CSV e OCR multimodal
+│   │   └── pluggy_service.py   # Conector com Open Finance (Pluggy API)
+│   ├── tabs/                   # Telas / Abas modulares do painel Streamlit
+│   └── utils/                  # Utilitários compartilhados (formatting, logger)
+│
+├── scripts/                    # Scripts utilitários de diagnóstico, manutenção e migração
+│   ├── auto_ajustar_splits.py  # Script de reconciliação de desdobramentos de ações
+│   ├── corrigir_planilha.py    # Sanitização e correção em lote de registros
+│   └── diagnostico.py          # Validação de integridade do ambiente e banco
+│
+└── tests/                      # Suíte de testes automatizados
+    ├── conftest.py             # Fixtures e mocks compartilhados do Pytest
+    ├── run_all.py              # Runner customizado unificado
+    ├── test_helpers.py         # Helpers para injeção de dados de teste
+    ├── unit/                   # Testes unitários de serviços e utilitários
+    └── integration/            # Testes de integração (fluxo SQLite, delta sync, parsers)
+```
+
+---
+
+## ⚡ 5. Como Executar (Docker Compose / WSL)
+
+### 1. Clonar ou Acessar o Diretório
+
+```bash
+cd ~/Documentos/DevProjects/Python/paulo-investimentos-pessoais
+```
+
+### 2. Configurar o Arquivo `.env` e Credenciais
 
 ```bash
 cp .env.example .env
 ```
 
-Abra o arquivo `.env` e configure:
+Preencha os IDs das planilhas, a `GEMINI_API_KEY` e salve a chave `credentials.json` em `data/credentials.json`. Para instruções completas, consulte o [Guia de Configuração de Credenciais](Docs/guias/configuracao_google_sheets_e_credenciais.md).
 
-- Os IDs das suas planilhas (`SPREADSHEET_BUDGET_ID_2026`, `SPREADSHEET_BUDGET_ID_2027`, ..., `SPREADSHEET_ORDERS_ID`).
-- A sua chave da API do Gemini (`GEMINI_API_KEY`), obtida em [Google AI Studio](https://aistudio.google.com/).
-- A porta do servidor (padrão: `STREAMLIT_PORT=8502`).
-
-### 3. Iniciar o Ambiente de Desenvolvimento
-
-Execute o script de inicialização rápida:
+### 3. Iniciar a Aplicação
 
 ```bash
 chmod +x 00-iniciar.sh
 ./00-iniciar.sh
 ```
 
-A aplicação estará acessível em: **[http://localhost:8502](http://localhost:8502)** (ou na porta configurada no `.env`).
+A interface web estará disponível em: **`http://localhost:8502`**.
 
 ---
 
-## 🛠️ Comandos Úteis do Docker
+## 🧭 6. Deep Linking & URLs Rápidas
 
-- **Subir os containers em background com build:**
+A aplicação sincroniza o estado das abas e subabas nos parâmetros da URL do navegador:
 
-  ```bash
-  docker compose up -d --build
-  ```
-
-- **Visualizar os logs em tempo real:**
-
-  ```bash
-  docker compose logs -f
-  ```
-
-- **Parar os containers:**
-
-  ```bash
-  docker compose down
-  ```
-
-- **Reiniciar os containers:**
-  ```bash
-  docker compose restart
-  ```
-
----
-
-## 📁 Estrutura de Diretórios e Arquitetura
-
-```text
-paulo-investimentos-pessoais/
-├── .streamlit/
-│   └── config.toml                 # Configurações de porta, CORS e servidor
-├── assets/
-│   └── css/
-│       └── styles.css              # Design system, glassmorphism e tema escuro
-├── data/
-│   ├── credentials.json            # Chave Google Cloud (ignorado pelo git)
-│   └── investimentos.db            # Banco de dados local SQLite
-├── src/
-│   ├── components/                 # Componentes de UI reutilizáveis
-│   │   ├── __init__.py
-│   │   ├── header.py               # Header da aplicação com popover de menu
-│   │   └── sidebar.py              # Barra lateral de configurações e conexões
-│   ├── database/                   # Camada de persistência local SQLite
-│   │   ├── __init__.py
-│   │   └── db_manager.py           # Gestão de conexões, delta sync e tabelas
-│   ├── services/                   # Motores de cálculo, conectores e inteligência
-│   │   ├── __init__.py
-│   │   ├── data_loader.py          # Carga e sanitização Google Sheets / SQLite
-│   │   ├── analytics.py            # Motor de cálculos TWR, cotações e benchmarks
-│   │   ├── ai_allocator.py         # Integração com Google Gemini 1.5 Flash
-│   │   ├── deduplication.py        # Geração de hash SHA-256 e detector de duplicatas
-│   │   ├── ingestion_parser.py     # Parsers para OFX, CSV e OCR com Gemini Vision
-│   │   └── pluggy_service.py       # Conector com a API Open Finance da Pluggy
-│   ├── tabs/                       # Módulos de páginas/abas isoladas
-│   │   ├── __init__.py
-│   │   ├── visao_geral.py          # Tab 1: Visão Geral, Alocação e Fluxo de Caixa
-│   │   ├── desempenho.py           # Tab 2: Desempenho Histórico e Benchmarks
-│   │   ├── extratos.py             # Tab 3: Extratos Detalhados e Filtros
-│   │   ├── fundamentalista.py      # Tab 4: Análise Fundamentalista e FIIs
-│   │   ├── consultoria_ia.py       # Tab 5: Consultoria de Alocação com IA
-│   │   ├── importar_gastos.py      # Tab 6: Ingestão Inteligente e Conciliação
-│   │   ├── editor_planilhas.py     # Tab 7: Editor de Dados das Planilhas & SQLite
-│   │   └── configuracoes.py        # Tab 8: Configurações Globais, Credenciais e Sync
-│   └── utils/                      # Funções utilitárias compartilhadas
-│       ├── __init__.py
-│       ├── formatting.py           # Formatação de moedas, números e normalização
-│       └── logger.py               # Sistema de logging centralizado rotativo e colorido
-├── logs/                           # Diretório de logs rotativos (3MB, máx 3 arquivos)
-│   ├── app/                        # Logs da aplicação e ciclo de vida
-│   ├── components/                 # Logs do header e sidebar
-│   ├── database/                   # Logs de persistência SQLite
-│   ├── services/                   # Logs de serviços e APIs
-│   └── tabs/                       # Logs das páginas/abas da UI
-├── scripts/                        # Scripts auxiliares de diagnóstico e migração
-├── dashboard.py                    # Hub / Ponto de entrada principal do Streamlit
-├── Dockerfile                      # Imagem Docker otimizada (Python 3.12-slim-bookworm)
-├── docker-compose.yml              # Orquestração do container de desenvolvimento
-├── 00-iniciar.sh                   # Script de inicialização rápida no WSL
-└── 00-iniciar.cmd                  # Atalho de execução para Windows (WSL)
-```
-
----
-
-## 🧭 Navegação Rápida e Deep Linking (URLs com Query Params)
-
-A aplicação sincroniza automaticamente o estado das páginas e subabas na barra de endereços do navegador. Ao recarregar a página (**F5**) ou compartilhar o link, você é levado diretamente para o ponto exato:
-
-| Página | Parâmetro de URL | Exemplos de Subabas (`&subtab=`) |
+| Módulo | Parâmetro de URL | Subabas Disponíveis (`&subtab=`) |
 | :--- | :--- | :--- |
 | **📊 Visão Geral e Orçamento** | `?tab=visao_geral` | — |
 | **📈 Desempenho e Benchmarks** | `?tab=desempenho` | — |
 | **📑 Extratos e Lançamentos** | `?tab=extratos` | `&subtab=receitas`, `&subtab=despesas`, `&subtab=dividendos`, `&subtab=ordens` |
 | **🔍 Análise Fundamentalista** | `?tab=fundamentalista` | `&subtab=balanco`, `&subtab=dre`, `&subtab=fluxo` |
 | **🤖 Consultoria de Alocação com IA** | `?tab=consultoria_ia` | — |
-| **📥 Importação de Dados** | `?tab=importar_gastos` | `&subtab=comprovantes`, `&subtab=arquivos`, `&subtab=open_finance` |
+| **📥 Ingestão & Conciliação** | `?tab=importar_gastos` | `&subtab=comprovantes`, `&subtab=arquivos`, `&subtab=open_finance` |
 | **📝 Editor de Planilhas** | `?tab=editor_planilhas` | — |
 | **⚙️ Configurações do Sistema** | `?tab=configuracoes` | — |
 
-*Exemplo de acesso direto:* `http://localhost:8502/?tab=editor_planilhas`
-
 ---
 
+## 🧪 7. Suíte de Testes Automatizados
 
-
-
-## 🔑 Como Obter o JSON de Conta de Serviço do Google Cloud
-
-Para que o seu aplicativo Python acesse com segurança suas planilhas privadas do Google Sheets sem torná-las públicas, é recomendável usar uma **Conta de Serviço**. Siga este passo a passo para gerar o seu arquivo `credentials.json`:
-
-1. **Acessar o Google Cloud Console:**
-   - Vá para: [https://console.cloud.google.com/](https://console.cloud.google.com/) e faça login com sua conta do Google.
-
-2. **Criar um Novo Projeto:**
-   - No menu superior (geralmente ao lado do logo do Google Cloud), clique no seletor de projetos e selecione **Novo Projeto**.
-   - Dê o nome de `FinancasApp` (ou qualquer outro nome) e clique em **Criar**.
-
-3. **Ativar as APIs Necessárias:**
-   - No campo de busca do topo, pesquise por **Google Sheets API** e clique em **Ativar** (Enable).
-   - Em seguida, pesquise por **Google Drive API** e clique em **Ativar** (Enable).
-
-4. **Criar a Conta de Serviço:**
-   - No menu lateral esquerdo, vá para **APIs e Serviços** > **Credenciais** (Credentials).
-   - Clique no botão **+ Criar Credenciais** (+ Create Credentials) no menu superior e selecione **Conta de Serviço** (Service Account).
-   - Preencha as informações:
-     - **Nome da Conta de Serviço:** ex: `streamlit-sheets-reader`
-     - Clique em **Criar e Continuar** (Create and Continue).
-     - Nas etapas seguintes (permissões de acesso), você pode apenas clicar em **Concluir** (Done) pois não são obrigatórias para este tipo de conexão.
-
-5. **Gerar a Chave Privada (JSON):**
-   - Na tabela de credenciais, localize a conta de serviço criada (na seção _Contas de Serviço_ / _Service Accounts_) e clique no e-mail dela.
-   - Vá para a aba superior chamada **Chaves** (Keys).
-   - Clique em **Adicionar Chave** (Add Key) > **Criar Nova Chave** (Create New Key).
-   - Selecione o formato **JSON** e clique em **Criar**.
-   - O download do arquivo será feito automaticamente.
-
-6. **Colocar as Credenciais no Projeto:**
-   - Renomeie o arquivo baixado para `credentials.json`.
-   - Salve esse arquivo na raiz do diretório `d:\PythonProjects\paulo-investimentos-pessoais\`.
-   - _Nota de Segurança:_ O arquivo `.gitignore` já está configurado para **NÃO** enviar esse arquivo para o GitHub, mantendo seus dados protegidos!
-
-7. **Compartilhar a Planilha com a Conta de Serviço (Passo Fundamental):**
-   - Abra o arquivo `credentials.json` em um editor de texto e localize o campo `"client_email"` (ele terá um formato parecido com `streamlit-sheets-reader@seu-projeto.iam.gserviceaccount.com`).
-   - Abra as suas duas planilhas no navegador:
-     - **Orçamento:** Insira seu Google Sheets
-     - **Ordens:** Insira seu Google Sheets
-   - Em cada uma delas, clique no botão **Compartilhar** (Share) no canto superior direito.
-   - Cole o e-mail da conta de serviço (`client_email`), defina a permissão como **Leitor** (Viewer) e desmarque a opção de enviar notificação. Clique em **Compartilhar**.
-
----
-
-## 🎨 Principais Recursos do Painel
-
-- **Abas Customizadas:** Divisão entre Visão Geral (orçamentos e carteira), Desempenho Histórico, Visualização de Extrato de Lançamentos, Análise Fundamentalista, Consultoria com IA e **Importação Inteligente de Dados**.
-- **Ingestão Híbrida Inteligente (Nova Feature):**
-  - **📸 Leitura de Comprovantes via OCR/IA:** Extração automática de prints, faturas e comprovantes Pix com Google Gemini Vision e Schema estruturado (Pydantic).
-  - **📄 Arquivos Bancários (.OFX / .CSV):** Leitura de extratos bancários com detecção automática de formatos e separadores.
-  - **🏦 Open Finance (Pluggy):** Sincronização direta de transações bancárias via API.
-  - **🛡️ Detecção Rigorosa de Duplicidades:** Gerador de Hash SHA-256 (`Data_Valor_Descrição`) que compara os lotes contra as transações já salvas e contra duplicatas internas.
-  - **📋 Conciliação Interativa (Human-in-the-Loop):** Interface com `st.data_editor` permitindo editar categoria, valor e aprovar registros antes de persistir no Google Sheets e SQLite.
-- **Modo Demonstração (Fallback inteligente):** O aplicativo carrega dados simulados de altíssima qualidade caso as credenciais reais ainda não tenham sido configuradas. Isso permite testar todos os gráficos e a consultoria da IA instantaneamente!
-- **Gráficos Dinâmicos com Plotly:** Gráficos interativos com zoom e exibição de valores nos eixos para facilitar o monitoramento.
-- **Benchmarks Nacionais e Internacionais:**
-  - **CDI e IPCA:** Coletados diretamente da API do Banco Central do Brasil em tempo real.
-  - **Ibovespa e S&P 500:** Coletados do Yahoo Finance (`yfinance`).
-- **Inteligência Artificial Gemini:** Diagnóstico sobre sua capacidade de poupança (salário vs gastos), riscos de diversificação e rebalanceamento saudável com base nos seus ativos reais.
-
----
-
-## 🚀 Upgrades e Melhorias Recentes
-
-- **Módulo de Ingestão Híbrida e Conciliação Humana**: Entrada unificada para OCR Multimodal, arquivos bancários (.OFX/.CSV) e API Open Finance da Pluggy com persistência imediata em lote no Google Sheets e SQLite local.
-- **Deduplicação Determinística com Hashing SHA-256**: Prevenção ativa de lançamentos duplicados comparando novos dados com bases históricas.
-- **Cálculo de Rentabilidade TWR (Time-Weighted Return) por Cotas**: Implementamos a fórmula matemática padrão da ANBIMA e das corretoras profissionais. Agora, novos aportes e resgates volumosos não causam mais o efeito de "diluição de rentabilidade", gerando gráficos históricos 100% corretos.
-- **Normalização Multiplicativa de Splits e Bonificações**: Suporte total a desdobramentos de ativos de forma retroativa e proporcional ao tempo, garantindo que o custo médio e as quantidades históricas fiquem matematicamente alinhados com o estado atual.
-- **Correção Dinâmica e Silenciosa de Decimais PT-BR**: Sistema inteligente baseado em Regex para converter, ler e autocorrigir valores do Google Sheets que sofreram distorções de localidade (ponto vs vírgula decimal brasileira).
-- **Desacoplamento Completo e Configuração Dinâmica (`.env`)**: Removemos todos os dados sensíveis e tabelas estáticas de splits ou correções de ativos do código-fonte. Agora, tudo é lido de forma dinâmica de variáveis JSON em `.env` (`CORRECOES_CONHECIDAS` e `SPLITS_OFICIAIS`).
-- **Sistema de Logs Profissional e Rotativo**: Monitoramento robusto através de um logger rotativo configurado para manter no máximo 3 arquivos de log de até 3MB cada (limpando os mais antigos automaticamente) para garantir a saúde do espaço em disco.
-
----
-
-## 🩺 Troubleshooting / Resolução de Problemas Comuns
-
-### 1. `NS_ERROR_NET_TIMEOUT` ou `localhost:8502` não responde no navegador
-
-Caso o container esteja ativo (`docker compose logs` exibindo `Uvicorn server started`), mas o navegador dê timeout no Windows:
-
-- **Causa comum:** Travamento no serviço de _localhost forwarding_ do WSL 2.
-- **Solução:**
-  1. No terminal do PowerShell do Windows (fora do WSL), encerre o WSL:
-     ```powershell
-     wsl --shutdown
-     ```
-  2. Abra novamente o WSL e inicie o projeto:
-     ```bash
-     ./00-iniciar.sh
-     ```
-  3. Alternativa direta pelo IP interno do WSL no navegador:
-     ```bash
-     hostname -I | awk '{print $1}'
-     # Acesse: http://<IP_DO_WSL>:8502
-     ```
-
-### 2. Recriar containers e limpar caches do Docker
+A integridade do sistema é garantida por uma suíte completa de testes automatizados executada dentro do contêiner Docker:
 
 ```bash
-docker compose down -v
-docker compose up -d --build
+# Execução da suíte completa com runner colorido
+docker compose exec paulo-investimentos-app python tests/run_all.py
+
+# Ou execução via pytest para módulos específicos
+docker compose exec paulo-investimentos-app pytest tests/unit/
 ```
+
+Para mais detalhes de configuração de mocks e fixtures, consulte o [Manual da Suíte de Testes](Docs/testes/suite_de_testes_automatizados.md).
+
+---
+
+## 📚 8. Central de Documentação Técnica
+
+Para documentação aprofundada de regras de negócio, modelagem de banco de dados, fluxos de OCR e manuais de operação, acesse a [Central de Documentação Técnica em Docs/](Docs/README.md).
