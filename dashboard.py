@@ -28,6 +28,72 @@ def load_css():
 
 load_css()
 
+# Barreira de Segurança Fail-Closed (Host Header, Runtime Config & Autenticação)
+from src.utils.security import (
+    AuthService,
+    is_auth_required,
+    redact_secrets,
+    validate_host_header,
+    validate_runtime_security_config,
+)
+
+
+def _enforce_security_gate() -> None:
+    """Impede acesso ao painel caso configurações críticas estejam ausentes ou a sessão não esteja autenticada."""
+    host_header = ""
+    try:
+        headers = getattr(getattr(st, "context", None), "headers", None)
+        if headers:
+            host_header = headers.get("Host") or headers.get("host") or ""
+    except Exception:
+        host_header = ""
+
+    if host_header and not validate_host_header(host_header):
+        logger.warning(f"Host Header não autorizado bloqueado: {host_header}")
+        st.error("403 Forbidden: Host não autorizado.")
+        st.stop()
+
+    config_ok, config_err = validate_runtime_security_config()
+    if not config_ok:
+        logger.critical(f"Inicialização bloqueada (Fail-Closed): {config_err}")
+        st.error(f"🔒 Sistema bloqueado por segurança (Fail-Closed): {config_err}")
+        st.info("Configure DASHBOARD_AUTH_PASSWORD_HASH (ou DASHBOARD_ACCESS_PASSWORD) e DASHBOARD_SESSION_SECRET no .env (chmod 600) antes de iniciar o painel.")
+        st.stop()
+
+    if not is_auth_required():
+        return
+
+    if "auth_service" not in st.session_state:
+        st.session_state["auth_service"] = AuthService()
+    auth_service: AuthService = st.session_state["auth_service"]
+
+    token = st.session_state.get("auth_session_token", "")
+    if auth_service.validate_session_token(token):
+        with st.sidebar:
+            if st.button("🔒 Encerrar Sessão", key="btn_logout_session", use_container_width=True):
+                st.session_state.pop("auth_session_token", None)
+                st.rerun()
+        return
+
+    st.markdown("## 🔒 Acesso Restrito — Paulo Finanças & Investimentos")
+    st.caption("Autenticação obrigatória habilitada em modo Fail-Closed.")
+    with st.form("login_form", clear_on_submit=True):
+        pwd_input = st.text_input("Senha de acesso:", type="password", key="auth_password_input")
+        submitted = st.form_submit_button("Entrar", type="primary")
+        if submitted:
+            status_code, msg = auth_service.verify_credentials(pwd_input, client_key="webui")
+            if status_code == 200:
+                st.session_state["auth_session_token"] = auth_service.create_session_token()
+                logger.info("Autenticação WebUI realizada com sucesso.")
+                st.rerun()
+            else:
+                logger.warning(f"Tentativa de login rejeitada ({status_code}).")
+                st.error(f"HTTP {status_code} — {msg}")
+    st.stop()
+
+
+_enforce_security_gate()
+
 # Importações de componentes e abas modulares
 from src.components import render_header, render_sidebar
 from src.tabs import (
@@ -72,7 +138,7 @@ else:
             df_orders = get_orders_data(use_mock=True)
             use_mock = True
     except Exception as e:
-        st.error(f"Erro ao conectar com as planilhas reais: {e}")
+        st.error(f"Erro ao conectar com as planilhas reais: {redact_secrets(e)}")
         st.info("Carregando modo de demonstração como fallback para testes...")
         df_receitas, df_despesas, df_dividendos = get_budget_data(use_mock=True)
         df_orders = get_orders_data(use_mock=True)

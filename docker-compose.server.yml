@@ -5,8 +5,12 @@ services:
       dockerfile: Dockerfile
     container_name: paulo-investimentos-app
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "${PORT:-8094}:${PORT:-8094}"
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-8094}:${PORT:-8094}"
     env_file:
       - .env
     volumes:
@@ -22,7 +26,7 @@ services:
       - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
       - TZ=America/Campo_Grande
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${PORT:-8094}/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:${PORT:-8094}/_stcore/health"]
       interval: 15s
       timeout: 5s
       retries: 3

@@ -47,19 +47,19 @@ class Pay99Parser(BaseBankParser):
         """
         try:
             import pytesseract
-            from PIL import Image
+            from src.utils.security import redact_secrets, safe_open_image
 
-            image = Image.open(io.BytesIO(file_bytes))
+            image = safe_open_image(file_bytes)
             text = pytesseract.image_to_string(image, lang="por")
             logger.info("OCR Tesseract executado no comprovante 99 Pay.")
             return self.parse_ocr_text(text)
         except Exception as e:
-            logger.warning(f"Erro no OCR local do 99 Pay: {e}. Tentando fallback IA...")
+            logger.warning(f"Erro no OCR local do 99 Pay: {redact_secrets(e)}. Tentando fallback IA...")
             try:
                 from src.services.ingestion_parser import parse_receipt_image
                 return parse_receipt_image(file_bytes, mime_type=mime_type)
             except Exception as e_fallback:
-                logger.error(f"Fallback também falhou: {e_fallback}")
+                logger.error(f"Fallback também falhou: {redact_secrets(e_fallback)}")
                 return self.empty_dataframe()
 
     def parse_ocr_text(self, text: str) -> pd.DataFrame:

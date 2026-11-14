@@ -205,22 +205,23 @@ paulo-investimentos-pessoais/
 cd ~/Documentos/DevProjects/Python/paulo-investimentos-pessoais
 ```
 
-### 2. Configurar o Arquivo `.env` e Credenciais
+### 2. Configurar o Arquivo `.env`, Autenticação Fail-Closed e Credenciais
 
 ```bash
 cp .env.example .env
+chmod 600 .env
 ```
 
-Preencha os IDs das planilhas, a `GEMINI_API_KEY` e salve a chave `credentials.json` em `data/credentials.json`. Para instruções completas, consulte o [Guia de Configuração de Credenciais](Docs/guias/configuracao_google_sheets_e_credenciais.md).
+Preencha os IDs das planilhas, a `GEMINI_API_KEY`, gere o hash de acesso (`DASHBOARD_AUTH_PASSWORD_HASH`) e o segredo de sessão (`DASHBOARD_SESSION_SECRET`), e salve `credentials.json` em `data/credentials.json` (com `chmod 600`). O painel opera em modo **Fail-Closed** com bind padrão restrito a `127.0.0.1`. Para instruções completas, consulte o [Guia de Configuração de Credenciais](Docs/guias/configuracao_google_sheets_e_credenciais.md).
 
 ### 3. Iniciar a Aplicação
 
 ```bash
-chmod +x 00-iniciar.sh
+chmod 755 00-iniciar.sh
 ./00-iniciar.sh
 ```
 
-A interface web estará disponível em: **`http://localhost:8502`**.
+A interface web estará disponível localmente em: **`http://127.0.0.1:8502`** (ou via túnel SSH em ambientes remotos).
 
 ---
 
@@ -243,14 +244,17 @@ A aplicação sincroniza o estado das abas e subabas nos parâmetros da URL do n
 
 ## 🧪 7. Suíte de Testes Automatizados
 
-A integridade do sistema é garantida por uma suíte completa de testes automatizados executada dentro do contêiner Docker:
+A integridade funcional e de segurança do sistema é garantida por uma suíte completa de testes automatizados (incluindo varredura de segredos em `git ls-files`, travas Fail-Closed, testes negativos HTTP `401`/`429` e validação de sanitização):
 
 ```bash
-# Execução da suíte completa com runner colorido
-docker compose exec paulo-investimentos-app python tests/run_all.py
+# Execução recomendada via launcher (monta tests/ e scripts/ em modo somente leitura)
+./00-iniciar.sh --test
 
-# Ou execução via pytest para módulos específicos
-docker compose exec paulo-investimentos-app pytest tests/unit/
+# Ou com o contêiner ativo (passando os volumes de teste)
+docker compose run --rm -v "$(pwd)/tests:/app/tests:ro" -v "$(pwd)/scripts:/app/scripts:ro" app python tests/run_all.py
+
+# Ou execução específica via pytest
+docker compose run --rm -v "$(pwd)/tests:/app/tests:ro" app pytest tests/unit/test_security.py -v
 ```
 
 Para mais detalhes de configuração de mocks e fixtures, consulte o [Manual da Suíte de Testes](Docs/testes/suite_de_testes_automatizados.md).

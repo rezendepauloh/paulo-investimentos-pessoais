@@ -557,7 +557,10 @@ def detect_institution(filename: str = "", content_sample: str = "") -> str:
     return "Conta corrente"
 
 def sanitize_ofx_content(content_str: str) -> str:
-    """Corrige anomalias comuns em cabeçalhos OFX de bancos brasileiros (ex: C6 Bank)."""
+    """Corrige anomalias comuns em cabeçalhos OFX e remove declarações XML/XXE perigosas."""
+    from src.utils.security import strip_xml_xxe
+
+    content_str = strip_xml_xxe(content_str)
     # Corrige espaços em ENCODING: UTF - 8 -> ENCODING:UTF-8
     content_str = re.sub(r'ENCODING\s*:\s*UTF\s*-\s*8', 'ENCODING:UTF-8', content_str, flags=re.IGNORECASE)
     # Remove espaços entre chave e valor no cabeçalho OFX (ex: OFXHEADER: 100 -> OFXHEADER:100)
@@ -662,9 +665,17 @@ def parse_ofx(file_input: Any, filename: str = "") -> pd.DataFrame:
     (suporte a bancos como C6, Sicredi, Inter, Nubank) e fallback automático via Regex.
     Aceita bytes, str ou objetos file-like.
     """
+    from src.utils.security import MAX_UPLOAD_BYTES, redact_secrets
+
     if isinstance(file_input, str):
+        if len(file_input.encode("utf-8", errors="ignore")) > MAX_UPLOAD_BYTES:
+            logger.warning(f"OFX rejeitado por exceder tamanho máximo permitido ({filename}).")
+            return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Categoria', 'Tipo', 'Conta creditada', 'Conta debitada', 'Fixo vs. Variável', 'Essencial vs. Não Essencial', 'Forma_Pagamento', 'Hash'])
         content_str = file_input
     elif isinstance(file_input, bytes):
+        if len(file_input) > MAX_UPLOAD_BYTES:
+            logger.warning(f"OFX rejeitado por exceder tamanho máximo permitido ({filename}).")
+            return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Categoria', 'Tipo', 'Conta creditada', 'Conta debitada', 'Fixo vs. Variável', 'Essencial vs. Não Essencial', 'Forma_Pagamento', 'Hash'])
         content_str = ""
         for enc in ['utf-8', 'latin1', 'cp1252']:
             try:
@@ -673,7 +684,10 @@ def parse_ofx(file_input: Any, filename: str = "") -> pd.DataFrame:
             except Exception:
                 continue
     elif hasattr(file_input, "read"):
-        raw = file_input.read()
+        raw = file_input.read(MAX_UPLOAD_BYTES + 1)
+        if len(raw) > MAX_UPLOAD_BYTES:
+            logger.warning(f"OFX stream rejeitado por exceder tamanho máximo permitido ({filename}).")
+            return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Categoria', 'Tipo', 'Conta creditada', 'Conta debitada', 'Fixo vs. Variável', 'Essencial vs. Não Essencial', 'Forma_Pagamento', 'Hash'])
         if isinstance(raw, str):
             content_str = raw
         else:
@@ -767,7 +781,10 @@ def parse_csv(file_bytes: bytes, filename: str = "") -> pd.DataFrame:
     Suporta múltiplos encodings (utf-8-sig, utf-8, latin1), detecta separadores (; ou ,)
     e possui suporte nativo à inferência de instituições financeiras (Sicredi, Inter, C6, XP, etc.).
     """
+    from src.utils.security import MAX_UPLOAD_BYTES, validate_upload_bytes
+
     try:
+        validate_upload_bytes(file_bytes, filename=filename or "extrato.csv", allowed_extensions=[".csv"], max_bytes=MAX_UPLOAD_BYTES)
         # Tenta múltiplos encodings para decodificar e ler o CSV
         df_raw = None
         content_sample = ""
@@ -926,6 +943,9 @@ def parse_receipt_image(image_bytes: bytes, mime_type: str = "image/png") -> pd.
     Processa comprovantes de Pix, faturas de cartão, recibos e extratos fotográficos utilizando o Gemini Multimodal.
     Retorna DataFrame padronizado com Schema Pydantic estruturado.
     """
+    from src.utils.security import MAX_UPLOAD_BYTES, redact_secrets, validate_upload_bytes
+
+    validate_upload_bytes(image_bytes, max_bytes=MAX_UPLOAD_BYTES)
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("Chave GEMINI_API_KEY não configurada no ambiente ou no painel lateral.")
@@ -1012,7 +1032,7 @@ Seja rigoroso e preciso com os valores e datas. Retorne estritamente o JSON estr
         return df
 
     except Exception as e:
-        logger.error(f"Erro ao processar imagem com Gemini Vision: {e}")
+        logger.error(f"Erro ao processar imagem com Gemini Vision: {redact_secrets(e)}")
         # Fallback sem response_schema caso a versão do SDK ou modelo tenha restrição
         try:
             model = genai.GenerativeModel("gemini-1.5-flash")
@@ -1058,5 +1078,5 @@ Seja rigoroso e preciso com os valores e datas. Retorne estritamente o JSON estr
                     return df
             return pd.DataFrame(columns=['Data', 'Descricao', 'Valor', 'Categoria', 'Tipo', 'Conta creditada', 'Conta debitada', 'Fixo vs. Variável', 'Essencial vs. Não Essencial', 'Forma_Pagamento', 'Hash'])
         except Exception as e2:
-            logger.error(f"Erro no fallback do Gemini Vision: {e2}")
-            raise RuntimeError(f"Falha na extração de dados via Gemini Vision: {e}")
+            logger.error(f"Erro no fallback do Gemini Vision: {redact_secrets(e2)}")
+            raise RuntimeError(f"Falha na extração de dados via Gemini Vision: {redact_secrets(e)}")

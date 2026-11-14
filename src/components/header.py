@@ -101,10 +101,13 @@ def render_header():
     header_col1, header_col2 = st.columns([8.2, 1.8], vertical_alignment="center")
 
     with header_col1:
+        from src.utils.security import sanitize_html
+        safe_title = sanitize_html(header_info["title"])
+        safe_subtitle = sanitize_html(header_info["subtitle"])
         st.markdown(f"""
         <div class="dashboard-header-left">
-            <h1 class="dashboard-title">{header_info['title']}</h1>
-            <p class="dashboard-subtitle">{header_info['subtitle']}</p>
+            <h1 class="dashboard-title">{safe_title}</h1>
+            <p class="dashboard-subtitle">{safe_subtitle}</p>
         </div>
         """, unsafe_allow_html=True)
 

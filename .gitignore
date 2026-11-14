@@ -1,5 +1,7 @@
 # Segurança - Arquivos Confidenciais
 .env
+.env.*
+!.env.example
 *.json
 !package*.json
 !cspell.json
@@ -10,6 +12,15 @@ data/*.json
 .streamlit/secrets.toml
 certs/*.crt
 *.crt
+*.pem
+*.key
+*.p12
+*.pfx
+backups/
+*.sql
+*.dump
+*.db-*
+logs/
 
 # Python e Ambientes Virtuais
 __pycache__/

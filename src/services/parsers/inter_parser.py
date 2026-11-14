@@ -339,26 +339,18 @@ class InterParser(BaseBankParser):
         Formata parcelas como: 'NOME DA LOJA 1/7 (Compra: DD/MM)'
         Atribui a data contábil do fechamento da fatura (dia 20 do mês de vencimento) e Conta Debitada = 'Cartão de crédito'.
         """
-        pwd = (password or os.getenv("PDF_INVOICE_INTER_PASSWORD", "")).strip()
+        from src.utils.security import redact_secrets, safe_open_pdf
 
         try:
-            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            reader = safe_open_pdf(
+                file_bytes,
+                filename=filename,
+                password=password,
+                password_env_keys=["PDF_INVOICE_INTER_PASSWORD"],
+            )
         except Exception as e:
-            logger.error(f"Erro ao abrir PDF da fatura do Inter ({filename}): {e}")
+            logger.error(f"Erro ao abrir/descriptografar PDF da fatura do Inter ({filename}): {redact_secrets(e)}")
             return self.empty_dataframe()
-
-        if reader.is_encrypted:
-            if not pwd:
-                logger.warning(f"Fatura {filename} é protegida por senha, mas nenhuma senha foi informada ou encontrada no .env (PDF_INVOICE_INTER_PASSWORD).")
-                return self.empty_dataframe()
-            try:
-                decrypted = reader.decrypt(pwd)
-                if not decrypted:
-                    logger.error(f"Falha ao descriptografar fatura {filename}: senha inválida.")
-                    return self.empty_dataframe()
-            except Exception as e:
-                logger.error(f"Erro ao aplicar senha no PDF {filename}: {e}")
-                return self.empty_dataframe()
 
         pt_months = {
             "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,

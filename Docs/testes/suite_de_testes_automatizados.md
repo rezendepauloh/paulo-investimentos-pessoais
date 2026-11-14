@@ -16,25 +16,30 @@ A suíte de testes cobre regras de negócio financeiras, cálculos de rentabilid
   - `test_db_manager.py`: Criação de esquemas, índices e consultas no SQLite.
   - `test_portfolio_health.py`: Diagnóstico de saúde da carteira.
   - `test_fundamental_analysis.py`: Validação de indicadores fundamentalistas.
+  - `test_security.py`: Autenticação Fail-Closed, PBKDF2, tokens HMAC, rate limiting (`401`/`429`), whitelists SQL/Ticker/Spreadsheet ID, anti-XSS, anti-Formula Injection, anti-XXE, anti-Zip-Bomb e redação de segredos.
 - **Testes de Integração (`tests/integration/`):**
   - `test_data_flow.py`: Fluxo completo de leitura, sanitização e sincronização.
+  - `test_security_audit.py`: Varredura contínua de segredos em `git ls-files`, validação Fail-Closed de scripts (`00-iniciar.sh`, `remover_linha_eztc.py`), checagem de hardening de infraestrutura e permissões de arquivos (`.env` `chmod 600`).
 
 ---
 
 ## 2. Como Executar os Testes
 
-Como o projeto possui dependências gerenciadas pelo Docker (como `gspread`, `yfinance`, `ofxtools`), os testes devem ser executados no contêiner ou em ambiente com as dependências instaladas:
+Como `tests/` é excluído da imagem de produção via `.dockerignore`, execute via launcher ou montando os volumes de teste em modo somente leitura:
 
-### No Contêiner Docker Ativo:
+### Via Launcher Oficial (Recomendado):
 
 ```bash
-docker compose exec paulo-investimentos-app python tests/run_all.py
+./00-iniciar.sh --test
 ```
 
-### Executar Teste Específico via Pytest:
+### Via Docker Compose Run ou Pytest:
 
 ```bash
-docker compose exec paulo-investimentos-app pytest tests/unit/test_bank_parsers.py -v
+docker compose run --rm -v "$(pwd)/tests:/app/tests:ro" -v "$(pwd)/scripts:/app/scripts:ro" app python tests/run_all.py
+
+# Teste específico via pytest:
+docker compose run --rm -v "$(pwd)/tests:/app/tests:ro" app pytest tests/unit/test_security.py tests/integration/test_security_audit.py -v
 ```
 
 ---

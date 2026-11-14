@@ -26,10 +26,9 @@ class GenericBankParser(BaseBankParser):
         """
         try:
             import pytesseract
-            from PIL import Image
-            import io
+            from src.utils.security import safe_open_image
 
-            image = Image.open(io.BytesIO(file_bytes))
+            image = safe_open_image(file_bytes)
             text = pytesseract.image_to_string(image, lang="por")
             text_lower = text.lower()
 

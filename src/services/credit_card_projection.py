@@ -50,7 +50,10 @@ def extract_installment_info(descricao: str) -> Tuple[int, int, str]:
 
     return cur_p, tot_p, nome_base
 
-def calculate_credit_card_projections(df_despesas: pd.DataFrame) -> Dict[str, Any]:
+def calculate_credit_card_projections(
+    df_despesas: pd.DataFrame,
+    reference_date: Optional[Any] = None,
+) -> Dict[str, Any]:
     """
     Processa todas as despesas de cartão de crédito e gera:
     1. 'compras_ativas': DataFrame das compras que ainda possuem parcelas a vencer no período corrente/futuro.
@@ -87,7 +90,7 @@ def calculate_credit_card_projections(df_despesas: pd.DataFrame) -> Dict[str, An
 
     # Extrai parcelas e obrigações futuras
     records = []
-    agora = pd.Timestamp.now().normalize()
+    agora = (pd.Timestamp(reference_date) if reference_date is not None else pd.Timestamp.now()).normalize()
     mes_atual_inicio = pd.Timestamp(agora.year, agora.month, 1)
 
     for _, row in df_cc.iterrows():
@@ -125,8 +128,7 @@ def calculate_credit_card_projections(df_despesas: pd.DataFrame) -> Dict[str, An
     # Ordena cronologicamente para identificar com precisão a última parcela lançada de cada compra
     df_parc = df_parc.sort_values(by=["dt", "cur_p"], ascending=[True, True])
 
-    # Marco temporal: início do mês corrente
-    agora = pd.Timestamp.now().normalize()
+    # Marco temporal: início do mês de referência
     mes_atual_inicio = pd.Timestamp(agora.year, agora.month, 1)
 
     # Agrupa por 'nome_base' para encontrar a última parcela conhecida

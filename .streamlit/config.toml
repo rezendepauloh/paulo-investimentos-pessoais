@@ -1,10 +1,14 @@
 [server]
-address = "0.0.0.0"
+address = "127.0.0.1"
 
 headless = true
-enableCORS = false
-enableXsrfProtection = false
+enableCORS = true
+enableXsrfProtection = true
+maxUploadSize = 15
 fileWatcherType = "poll"
+
+[client]
+showErrorDetails = false
 
 [browser]
 gatherUsageStats = false

@@ -191,6 +191,7 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
         st.markdown("### 🎯 Diagnóstico de Saúde Patrimonial & Decisão")
         st.caption("Visão macro de liquidez, solvência de longo prazo e preservação do poder de compra.")
 
+        from src.utils.security import sanitize_html
         cols_diag = st.columns(min(3, len(diagnosticos_patr)))
         for idx, d_item in enumerate(diagnosticos_patr):
             with cols_diag[idx % len(cols_diag)]:
@@ -198,9 +199,9 @@ def render_tab_visao_geral(df_holdings, df_orders, df_receitas, df_despesas, df_
                 st.markdown(
                     f"""
                     <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 12px; background-color: rgba(255, 255, 255, 0.03);">
-                        <div style="font-size: 1.05rem; font-weight: 600;">{d_item['icone']} {d_item['titulo']}</div>
-                        <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{val_card}</div>
-                        <div style="font-size: 0.86rem; color: #888;">{d_item['mensagem']}</div>
+                        <div style="font-size: 1.05rem; font-weight: 600;">{sanitize_html(d_item['icone'])} {sanitize_html(d_item['titulo'])}</div>
+                        <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{sanitize_html(val_card)}</div>
+                        <div style="font-size: 0.86rem; color: #888;">{sanitize_html(d_item['mensagem'])}</div>
                     </div>
                     """,
                     unsafe_allow_html=True

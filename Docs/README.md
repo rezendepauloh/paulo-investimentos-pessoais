@@ -15,7 +15,8 @@ Docs/
 │   ├── dossie_arquitetura_sistema.md                 # Visão global da arquitetura, fluxo de dados e serviços
 │   ├── camada_dados_hibrida_sheets_sqlite.md         # Modelo híbrido Google Sheets + SQLite (Delta Sync e índices)
 │   ├── motor_analytics_twr_benchmarks.md             # Motor TWR, splits, cotações e benchmarks de mercado
-│   └── pipeline_ingestao_parsers_dedicados.md        # Dispatcher por banco (OFX, CSV), IA multimodal e detecção SHA-256
+│   ├── pipeline_ingestao_parsers_dedicados.md        # Dispatcher por banco (OFX, CSV), IA multimodal e detecção SHA-256
+│   └── contexto_e_futuro_parsers.md                  # Contexto operacional detalhado e estratégia por banco (Strategy)
 │
 ├── 📖 guias/                                         # Manuais práticos de operação, instalação e utilitários
 │   ├── instalacao_e_deploy_docker.md                 # Deploy via Docker Compose (WSL, Linux e Servidor Homelab)
@@ -45,6 +46,7 @@ Docs/
 - **Como opera a persistência híbrida (Google Sheets + SQLite):** [Camada de Dados Híbrida](arquitetura/camada_dados_hibrida_sheets_sqlite.md)
 - **Como a rentabilidade (TWR) e benchmarks são calculados:** [Motor de Analytics & Benchmarks](arquitetura/motor_analytics_twr_benchmarks.md)
 - **Como funcionam os parsers dedicados por banco:** [Pipeline de Ingestão e Parsers Dedicados](arquitetura/pipeline_ingestao_parsers_dedicados.md)
+- **Visão detalhada e estratégia de ingestão por banco:** [Contexto e Futuro dos Parsers](arquitetura/contexto_e_futuro_parsers.md)
 
 ### 3. Qualidade, Testes & Roadmap
 - **Como executar a suíte de testes com validação rigorosa:** [Manual de Testes Automatizados](testes/suite_de_testes_automatizados.md)

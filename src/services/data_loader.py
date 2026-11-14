@@ -20,18 +20,22 @@ def insert_into_native_table(spreadsheet, worksheet_name: str, rows_data: list) 
     if not rows_data or spreadsheet is None:
         return 0
 
+    from src.utils.security import sanitize_spreadsheet_cell
+
+    safe_rows_data = [[sanitize_spreadsheet_cell(cell) for cell in row] for row in rows_data]
+
     ws = spreadsheet.worksheet(worksheet_name)
     all_values = ws.get_all_values()
     current_last_row = len(all_values)
 
     if current_last_row <= 1:
-        ws.insert_rows(rows_data, row=2, value_input_option="USER_ENTERED")
-        return len(rows_data)
+        ws.insert_rows(safe_rows_data, row=2, value_input_option="USER_ENTERED")
+        return len(safe_rows_data)
 
     # 1. Captura os dados da última linha que já pertence à tabela nativa
     old_last_row_values = ws.row_values(current_last_row)
-    num_cols = max(len(old_last_row_values), len(rows_data[0]))
-    num_new_rows = len(rows_data)
+    num_cols = max(len(old_last_row_values), len(safe_rows_data[0]))
+    num_new_rows = len(safe_rows_data)
 
     # 2. Insere linhas em branco na posição da última linha (DENTRO do contêiner da tabela)
     # Isso força o Google Sheets a expandir o objeto da Tabela Nativa automaticamente
@@ -40,7 +44,7 @@ def insert_into_native_table(spreadsheet, worksheet_name: str, rows_data: list) 
 
     # 3. Preenche o bloco expandido [current_last_row até current_last_row + num_new_rows]
     # Mantém a linha antiga na posição current_last_row e adiciona as novas linhas logo abaixo
-    full_payload = [old_last_row_values] + rows_data
+    full_payload = [old_last_row_values] + safe_rows_data
     
     start_cell = rowcol_to_a1(current_last_row, 1)
     end_cell = rowcol_to_a1(current_last_row + num_new_rows, num_cols)
@@ -223,7 +227,17 @@ def get_gspread_client():
                 f"Arquivo de credenciais do Google Cloud '{creds_path}' não encontrado. "
                 "Por favor, configure o arquivo em data/credentials.json ou ajuste o caminho no arquivo .env."
             )
-    
+
+    try:
+        mode = os.stat(creds_path).st_mode
+        if mode & 0o077:
+            logger.warning(
+                f"Permissões excessivas detectadas em '{creds_path}' (modo {oct(mode & 0o777)}). "
+                "Recomenda-se chmod 600 para proteger a chave de serviço."
+            )
+    except OSError:
+        pass
+
     credentials = Credentials.from_service_account_file(creds_path, scopes=SCOPES)
     return gspread.authorize(credentials)
 
@@ -335,9 +349,12 @@ def update_worksheet_from_dataframe(spreadsheet_id: str, worksheet_name: str, df
     Substitui com segurança o conteúdo de uma aba específica no Google Sheets com o DataFrame fornecido,
     formatando datas, números e texto no padrão nativo compatível com fórmulas e tabelas do Google Sheets.
     """
+    from src.utils.security import redact_secrets, sanitize_spreadsheet_cell, validate_spreadsheet_id
+
     if not spreadsheet_id or not worksheet_name:
         raise ValueError("ID da planilha ou nome da aba inválido.")
-        
+    spreadsheet_id = validate_spreadsheet_id(spreadsheet_id)
+
     try:
         client = get_gspread_client()
         spreadsheet = client.open_by_key(spreadsheet_id)
@@ -368,7 +385,7 @@ def update_worksheet_from_dataframe(spreadsheet_id: str, worksheet_name: str, df
                 
         df_export = df_export.fillna("")
         
-        header = [str(c).strip() for c in df_export.columns.tolist()]
+        header = [sanitize_spreadsheet_cell(str(c).strip()) for c in df_export.columns.tolist()]
         data_values = df_export.values.tolist()
         
         clean_rows = []
@@ -380,7 +397,7 @@ def update_worksheet_from_dataframe(spreadsheet_id: str, worksheet_name: str, df
                 elif isinstance(item, (int, float)):
                     clean_row.append(item)
                 else:
-                    clean_row.append(str(item))
+                    clean_row.append(sanitize_spreadsheet_cell(str(item)))
             clean_rows.append(clean_row)
             
         all_rows = [header] + clean_rows

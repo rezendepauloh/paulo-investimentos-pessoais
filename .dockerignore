@@ -1,4 +1,7 @@
 .git
+.gitignore
+.env
+.env.*
 .venv
 venv
 __pycache__
@@ -10,4 +13,17 @@ __pycache__
 .idea
 *.log
 /logs
-scratch
+logs/
+data/
+*.db
+*.sqlite
+*.db-*
+credentials.json
+*.pem
+*.key
+*.p12
+*.pfx
+backups/
+temp/
+tests/
+scratch/

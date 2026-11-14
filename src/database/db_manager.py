@@ -3,8 +3,25 @@ import sqlite3
 import pandas as pd
 import datetime
 from src.utils.logger import get_logger
+from src.utils.security import validate_identifier
 
 logger = get_logger("database", "db_manager")
+
+ALLOWED_TABLES = frozenset({
+    "ordens",
+    "receitas",
+    "despesas",
+    "dividendos",
+    "sync_metadata",
+    "precos_historicos",
+    "failed_tickers",
+    "dados_fundamentalistas",
+})
+
+
+def _safe_table(table_name: str) -> str:
+    """Valida o nome da tabela contra a whitelist estrita do esquema SQLite."""
+    return validate_identifier(table_name, allowed=ALLOWED_TABLES)
 
 
 # O diretório do banco de dados fica na raiz do projeto em 'data'
@@ -157,6 +174,12 @@ def init_db():
     
     conn.commit()
     conn.close()
+    try:
+        os.chmod(DB_DIR, 0o750)
+        if os.path.exists(DB_PATH):
+            os.chmod(DB_PATH, 0o600)
+    except OSError:
+        pass
     logger.info("Banco de dados SQLite inicializado com sucesso em %s", DB_PATH)
 
 def get_db_connection():
@@ -192,12 +215,13 @@ def get_table_data(table_name):
     """
     Retorna todos os dados de uma tabela específica como um DataFrame do Pandas.
     """
+    safe_table = _safe_table(table_name)
     conn = get_db_connection()
     try:
-        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+        df = pd.read_sql_query(f'SELECT * FROM "{safe_table}"', conn)
         return df
     except Exception as e:
-        logger.error("Erro ao ler dados da tabela %s: %s", table_name, e)
+        logger.error("Erro ao ler dados da tabela %s: %s", safe_table, e)
         return pd.DataFrame()
     finally:
         conn.close()
@@ -207,6 +231,7 @@ def save_dataframe_delta(table_name, df, unique_cols_mapping=None):
     Salva dados de um DataFrame do Pandas na tabela local do SQLite utilizando lógica de Delta (incremental).
     Evita a inserção de registros duplicados com base nos índices únicos declarados.
     """
+    safe_table = _safe_table(table_name)
     if df.empty:
         return 0
         
@@ -251,10 +276,13 @@ def save_dataframe_delta(table_name, df, unique_cols_mapping=None):
     df_temp = df_temp.rename(columns=cols_rename)
     
     # Filtra apenas as colunas existentes na tabela destino
-    cursor.execute(f"PRAGMA table_info({table_name})")
+    cursor.execute(f'PRAGMA table_info("{safe_table}")')
     db_cols = [row[1] for row in cursor.fetchall() if row[1] != 'id']
     
     df_temp = df_temp[[col for col in df_temp.columns if col in db_cols]]
+    if df_temp.empty or len(df_temp.columns) == 0:
+        conn.close()
+        return 0
     
     # Converte colunas de data/datetime para strings normais do SQLite
     for col in df_temp.columns:
@@ -262,9 +290,10 @@ def save_dataframe_delta(table_name, df, unique_cols_mapping=None):
             df_temp[col] = df_temp[col].dt.strftime("%Y-%m-%d %H:%M:%S")
             
     # Executa a inserção em lote com 'INSERT OR IGNORE' (Delta Sincronização)
-    cols_placeholder = ", ".join(["?"] * len(df_temp.columns))
-    cols_str = ", ".join(df_temp.columns)
-    sql = f"INSERT OR IGNORE INTO {table_name} ({cols_str}) VALUES ({cols_placeholder})"
+    safe_cols = [validate_identifier(c, allowed=db_cols) for c in df_temp.columns]
+    cols_placeholder = ", ".join(["?"] * len(safe_cols))
+    cols_str = ", ".join(f'"{c}"' for c in safe_cols)
+    sql = f'INSERT OR IGNORE INTO "{safe_table}" ({cols_str}) VALUES ({cols_placeholder})'
     
     rows_inserted = 0
     records = [tuple(row) for row in df_temp.to_numpy()]
@@ -286,9 +315,10 @@ def clear_table(table_name):
     """
     Limpa todos os dados de uma tabela específica (caso seja necessário resetar o cache).
     """
+    safe_table = _safe_table(table_name)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(f"DELETE FROM {table_name}")
+    cursor.execute(f'DELETE FROM "{safe_table}"')
     conn.commit()
     conn.close()
 

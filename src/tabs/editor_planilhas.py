@@ -363,8 +363,10 @@ def render_tab_editor_planilhas():
                     logger.info(f"Editor de Planilhas: Alterações salvas com sucesso em '{active_sheet_meta['title']}' - '{worksheet_name}' ({len(df_to_save)} registros).")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"❌ Erro ao salvar alterações: {e}")
-                    logger.error(f"Erro ao salvar alterações no Google Sheets: {e}", exc_info=True)
+                    from src.utils.security import redact_secrets
+                    safe_err = redact_secrets(e)
+                    st.error(f"❌ Erro ao salvar alterações: {safe_err}")
+                    logger.error(f"Erro ao salvar alterações no Google Sheets: {safe_err}", exc_info=True)
 
     with btn_col2:
         if st.button("🔄 Recarregar Dados", use_container_width=True):

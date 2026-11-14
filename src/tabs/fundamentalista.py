@@ -129,15 +129,16 @@ def render_tab_fundamentalista(df_holdings, df_dividendos):
                 if diagnosticos:
                     st.markdown("#### 🔍 Pareceres do Diagnóstico:")
                     # Renderiza em 2 ou 3 colunas para boa leitura
+                    from src.utils.security import sanitize_html
                     cols_diag = st.columns(min(3, len(diagnosticos)))
                     for idx, diag in enumerate(diagnosticos):
                         with cols_diag[idx % len(cols_diag)]:
                             st.markdown(
                                 f"""
                                 <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 12px; background-color: rgba(255, 255, 255, 0.03);">
-                                    <div style="font-size: 1.1rem; font-weight: 600;">{diag['icone']} {diag['titulo']}</div>
-                                    <div style="font-size: 1.4rem; font-weight: bold; margin: 4px 0;">{diag['valor']}</div>
-                                    <div style="font-size: 0.88rem; color: #888;">{diag['mensagem']}</div>
+                                    <div style="font-size: 1.1rem; font-weight: 600;">{sanitize_html(diag['icone'])} {sanitize_html(diag['titulo'])}</div>
+                                    <div style="font-size: 1.4rem; font-weight: bold; margin: 4px 0;">{sanitize_html(diag['valor'])}</div>
+                                    <div style="font-size: 0.88rem; color: #888;">{sanitize_html(diag['mensagem'])}</div>
                                 </div>
                                 """,
                                 unsafe_allow_html=True

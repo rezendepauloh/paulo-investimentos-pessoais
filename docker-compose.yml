@@ -5,8 +5,12 @@ services:
       dockerfile: Dockerfile
     container_name: paulo_investimentos_app
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "${STREAMLIT_PORT:-8502}:${STREAMLIT_PORT:-8502}"
+      - "${BIND_ADDRESS:-127.0.0.1}:${STREAMLIT_PORT:-8502}:${STREAMLIT_PORT:-8502}"
     env_file:
       - .env
     environment:
@@ -19,10 +23,14 @@ services:
       - REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
       - SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     volumes:
-      - .:/app
-      - /app/__pycache__
+      - ./src:/app/src:ro
+      - ./dashboard.py:/app/dashboard.py:ro
+      - ./assets:/app/assets:ro
+      - ./.streamlit:/app/.streamlit:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${STREAMLIT_PORT:-8502}/_stcore/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:${STREAMLIT_PORT:-8502}/_stcore/health"]
       interval: 10s
       timeout: 5s
       retries: 3

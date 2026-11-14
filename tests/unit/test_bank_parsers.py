@@ -240,8 +240,12 @@ class TestBankParsers(unittest.TestCase):
         with open(fpath, "rb") as f:
             pdf_bytes = f.read()
 
+        pwd_inter = os.getenv("PDF_INVOICE_INTER_PASSWORD", "").strip()
+        if not pwd_inter:
+            self.skipTest("PDF_INVOICE_INTER_PASSWORD não definida no ambiente.")
+
         parser = get_parser("inter")
-        df = parser.parse_pdf(pdf_bytes, filename="Fatura.pdf", password="REDACTED_CPF_PREFIX")
+        df = parser.parse_pdf(pdf_bytes, filename="Fatura.pdf", password=pwd_inter)
 
         self.assertEqual(len(df), 57)
         for col in STANDARD_COLUMNS:
@@ -273,13 +277,17 @@ class TestBankParsers(unittest.TestCase):
         if not os.path.exists(fpath_09) or not os.path.exists(fpath_10):
             self.skipTest("Arquivos de fatura do C6 Bank não encontrados no ambiente.")
 
+        pwd_c6 = (os.getenv("PDF_INVOICE_C6_PASSWORD") or os.getenv("PDF_INVOICE_INTER_PASSWORD", "")).strip()
+        if not pwd_c6:
+            self.skipTest("PDF_INVOICE_C6_PASSWORD não definida no ambiente.")
+
         parser = get_parser("c6")
 
         # 1. Fatura de Setembro (09)
         with open(fpath_09, "rb") as f:
             pdf_bytes_09 = f.read()
 
-        df_09 = parser.parse_pdf(pdf_bytes_09, filename="09 - Fatura-CPF.pdf", password="REDACTED_CPF_PREFIX")
+        df_09 = parser.parse_pdf(pdf_bytes_09, filename="09 - Fatura-CPF.pdf", password=pwd_c6)
         self.assertEqual(len(df_09), 64)
         self.assertAlmostEqual(df_09["Valor"].sum(), 6431.75, places=2)
         self.assertEqual(df_09.loc[0, "Data"].strftime("%Y-%m-%d"), "2026-09-10")
@@ -292,7 +300,7 @@ class TestBankParsers(unittest.TestCase):
         with open(fpath_10, "rb") as f:
             pdf_bytes_10 = f.read()
 
-        df_10 = parser.parse_pdf(pdf_bytes_10, filename="10 - Fatura-CPF.pdf", password="REDACTED_CPF_PREFIX")
+        df_10 = parser.parse_pdf(pdf_bytes_10, filename="10 - Fatura-CPF.pdf", password=pwd_c6)
         self.assertEqual(len(df_10), 54)
         self.assertAlmostEqual(df_10["Valor"].sum(), 6152.99, places=2)
         self.assertEqual(df_10.loc[0, "Data"].strftime("%Y-%m-%d"), "2026-10-10")

@@ -186,26 +186,18 @@ class C6BankParser(BaseBankParser):
         Trata transações internacionais em moeda estrangeira (USD) e IOF correspondente.
         Atribui a data contábil de vencimento da fatura (dia 10 do mês), Conta debitada = 'Cartão de crédito'.
         """
-        pwd = (password or os.getenv("PDF_INVOICE_C6_PASSWORD") or os.getenv("PDF_INVOICE_INTER_PASSWORD", "")).strip()
+        from src.utils.security import redact_secrets, safe_open_pdf
 
         try:
-            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            reader = safe_open_pdf(
+                file_bytes,
+                filename=filename,
+                password=password,
+                password_env_keys=["PDF_INVOICE_C6_PASSWORD", "PDF_INVOICE_INTER_PASSWORD"],
+            )
         except Exception as e:
-            logger.error(f"Erro ao abrir PDF da fatura do C6 Bank ({filename}): {e}")
+            logger.error(f"Erro ao abrir/descriptografar PDF da fatura do C6 Bank ({filename}): {redact_secrets(e)}")
             return self.empty_dataframe()
-
-        if reader.is_encrypted:
-            if not pwd:
-                logger.warning(f"Fatura {filename} é protegida por senha, mas nenhuma senha foi informada ou encontrada no .env.")
-                return self.empty_dataframe()
-            try:
-                decrypted = reader.decrypt(pwd)
-                if not decrypted:
-                    logger.error(f"Falha ao descriptografar fatura {filename}: senha inválida.")
-                    return self.empty_dataframe()
-            except Exception as e:
-                logger.error(f"Erro ao aplicar senha no PDF {filename}: {e}")
-                return self.empty_dataframe()
 
         pt_months = {
             "jan": 1, "fev": 2, "mar": 3, "abr": 4, "mai": 5, "jun": 6,

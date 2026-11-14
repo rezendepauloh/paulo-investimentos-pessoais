@@ -65,8 +65,11 @@ try:
     idx_papel = headers.index("Papel")
     idx_data = headers.index("Data envio")
     
-    remover_ticker = os.getenv("REMOVER_TICKER", "EZTC3")
-    remover_data = os.getenv("REMOVER_DATA", "10/12/2025")
+    remover_ticker = os.getenv("REMOVER_TICKER", "").strip().upper()
+    remover_data = os.getenv("REMOVER_DATA", "").strip()
+    if not remover_ticker or not remover_data:
+        logger.error("Modo Fail-Closed: Defina REMOVER_TICKER e REMOVER_DATA no ambiente antes de executar.")
+        sys.exit(1)
     
     logger.info(f"Localizando a linha de bonificação de {remover_ticker} de {remover_data}...")
     linha_encontrada = None

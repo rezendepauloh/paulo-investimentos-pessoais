@@ -48,15 +48,12 @@ class VuonCardParser(BaseBankParser):
         Analisa as páginas procurando a tabela de lançamentos com o formato:
         Data Descrição Origem Valor (ex: 03/09/2026 HIPER COMPER 360 YPE 1/2 PAULO H GONCALVES REZENDE R$ 142,91+)
         """
+        from src.utils.security import redact_secrets, safe_open_pdf
+
         try:
-            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
-            if reader.is_encrypted:
-                if password:
-                    reader.decrypt(password)
-                else:
-                    reader.decrypt("")
+            reader = safe_open_pdf(file_bytes, filename=filename, password=password)
         except Exception as e:
-            logger.error(f"Erro ao abrir PDF do Vuon Card: {e}")
+            logger.error(f"Erro ao abrir PDF do Vuon Card: {redact_secrets(e)}")
             return self.empty_dataframe()
 
         records = []
@@ -161,8 +158,8 @@ class VuonCardParser(BaseBankParser):
         """
         try:
             import pytesseract
-            from PIL import Image
-            image = Image.open(io.BytesIO(file_bytes))
+            from src.utils.security import safe_open_image
+            image = safe_open_image(file_bytes)
             text = pytesseract.image_to_string(image, lang="por")
             lines = [l.strip() for l in text.splitlines() if l.strip()]
             records = []

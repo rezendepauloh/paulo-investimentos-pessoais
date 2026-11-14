@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 from typing import Optional, Dict, Any
 from src.services.deduplication import generate_transaction_hash
+from src.utils.security import MAX_HTTP_RESPONSE_BYTES, redact_secrets
 
 logger = logging.getLogger("PluggyService")
 
@@ -14,13 +15,13 @@ class PluggyService:
     BASE_URL = "https://api.pluggy.ai"
 
     def __init__(self, client_id: Optional[str] = None, client_secret: Optional[str] = None):
-        self.client_id = client_id or os.getenv("PLUGGY_CLIENT_ID", "")
-        self.client_secret = client_secret or os.getenv("PLUGGY_CLIENT_SECRET", "")
+        self.client_id = (client_id if client_id is not None else os.getenv("PLUGGY_CLIENT_ID", "")).strip()
+        self.client_secret = (client_secret if client_secret is not None else os.getenv("PLUGGY_CLIENT_SECRET", "")).strip()
         self.api_key: Optional[str] = None
 
     def get_auth_token(self) -> str:
         """
-        Autentica na API da Pluggy e obtém o apiKey (JWT) para as chamadas subsequentes.
+        Autentica na API da Pluggy e obtém o apiKey (JWT) para as chamadas subsequentes (fail-closed).
         """
         if self.api_key:
             return self.api_key
@@ -39,14 +40,20 @@ class PluggyService:
         }
 
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=15)
+            response = requests.post(url, json=payload, headers=headers, timeout=15, verify=True)
             response.raise_for_status()
+            if len(response.content) > MAX_HTTP_RESPONSE_BYTES:
+                raise ValueError("Resposta de autenticação Pluggy excede o limite de segurança.")
             data = response.json()
-            self.api_key = data.get("apiKey")
+            token = data.get("apiKey")
+            if not token or not isinstance(token, str):
+                raise RuntimeError("Resposta de autenticação da Pluggy não retornou apiKey válido.")
+            self.api_key = token
             return self.api_key
         except Exception as e:
-            logger.error(f"Erro ao autenticar na Pluggy: {e}")
-            raise RuntimeError(f"Falha na autenticação da Pluggy: {e}")
+            safe_err = redact_secrets(e)
+            logger.error(f"Erro ao autenticar na Pluggy: {safe_err}")
+            raise RuntimeError(f"Falha na autenticação da Pluggy: {safe_err}")
 
     def fetch_accounts(self, item_id: Optional[str] = None) -> list:
         """
@@ -64,11 +71,13 @@ class PluggyService:
         }
 
         try:
-            response = requests.get(url, headers=headers, params=params, timeout=15)
+            response = requests.get(url, headers=headers, params=params, timeout=15, verify=True)
             response.raise_for_status()
+            if len(response.content) > MAX_HTTP_RESPONSE_BYTES:
+                raise ValueError("Resposta de contas Pluggy excede o limite de segurança.")
             return response.json().get("results", [])
         except Exception as e:
-            logger.error(f"Erro ao buscar contas na Pluggy: {e}")
+            logger.error(f"Erro ao buscar contas na Pluggy: {redact_secrets(e)}")
             return []
 
     def fetch_transactions(self, from_date: str, to_date: Optional[str] = None, account_id: Optional[str] = None) -> pd.DataFrame:
@@ -102,8 +111,8 @@ class PluggyService:
                 params["accountId"] = acc
 
             try:
-                response = requests.get(url, headers=headers, params=params, timeout=20)
-                if response.status_code == 200:
+                response = requests.get(url, headers=headers, params=params, timeout=20, verify=True)
+                if response.status_code == 200 and len(response.content) <= MAX_HTTP_RESPONSE_BYTES:
                     results = response.json().get("results", [])
                     for trx in results:
                         amount = float(trx.get("amount", 0.0))

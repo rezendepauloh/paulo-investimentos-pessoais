@@ -53,15 +53,17 @@ def render_tab_configuracoes():
         current_key = st.session_state.get("gemini_key", env_gemini_key)
 
         gemini_input = st.text_input(
-            "Chave de API do Gemini:",
-            value=current_key,
+            "Sobrescrever Chave de API do Gemini (sessão atual):",
+            value="",
+            placeholder="•••••••• (preencha apenas para substituir a chave ativa)",
             type="password",
             help="Obtenha uma chave gratuita em https://aistudio.google.com/",
             key="config_gemini_key_input"
         )
-        if gemini_input != current_key:
-            st.session_state.gemini_key = gemini_input
-            os.environ["GEMINI_API_KEY"] = gemini_input
+        if gemini_input and gemini_input.strip() != current_key:
+            st.session_state.gemini_key = gemini_input.strip()
+            os.environ["GEMINI_API_KEY"] = gemini_input.strip()
+            current_key = gemini_input.strip()
             st.success("✅ Chave Gemini API atualizada na sessão!")
             logger.info("Configurações: Chave Gemini API atualizada pelo usuário.")
 
@@ -103,8 +105,10 @@ def render_tab_configuracoes():
                         logger.info("Configurações: Sincronização Google Sheets executada com sucesso.")
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro na sincronização: {e}")
-                        logger.error(f"Erro na sincronização Google Sheets: {e}")
+                        from src.utils.security import redact_secrets
+                        safe_err = redact_secrets(e)
+                        st.error(f"Erro na sincronização: {safe_err}")
+                        logger.error(f"Erro na sincronização Google Sheets: {safe_err}")
 
         with col_sync2:
             if st.button("📊 Sincronizar Fundamentalista", use_container_width=True):
@@ -117,8 +121,10 @@ def render_tab_configuracoes():
                         else:
                             st.warning("⚠️ Nenhum ticker elegível ou banco vazio.")
                     except Exception as e:
-                        st.error(f"Erro ao atualizar demonstrativos: {e}")
-                        logger.error(f"Erro ao atualizar demonstrativos fundamentalistas: {e}")
+                        from src.utils.security import redact_secrets
+                        safe_err = redact_secrets(e)
+                        st.error(f"Erro ao atualizar demonstrativos: {safe_err}")
+                        logger.error(f"Erro ao atualizar demonstrativos fundamentalistas: {safe_err}")
 
         if st.button("🧹 Limpar Cache do Streamlit", use_container_width=True):
             st.cache_data.clear()

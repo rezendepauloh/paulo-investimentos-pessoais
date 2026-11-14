@@ -3,10 +3,26 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from src.utils.security import redact_secrets
 
 # Raiz do projeto
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-LOGS_DIR = PROJECT_ROOT / "logs"
+LOGS_DIR = Path(os.getenv("APP_LOG_DIR", str(PROJECT_ROOT / "logs")))
+
+
+class SecretRedactingFilter(logging.Filter):
+    """Mascara credenciais, chaves de API e tokens antes da gravação em arquivos de log."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+            redacted = redact_secrets(msg)
+            if redacted != msg:
+                record.msg = redacted
+                record.args = ()
+        except Exception:
+            pass
+        return True
 
 class SafeStreamWrapper:
     """Wrapper para streams que previne travamentos catastróficos por UnicodeEncodeError no Windows/WSL."""
@@ -59,10 +75,6 @@ def get_logger(category: str, module_name: str) -> logging.Logger:
     - Limite por arquivo: 3 MB
     - BackupCount: 3 arquivos de histórico (descarta os mais antigos automaticamente)
     """
-    category_dir = LOGS_DIR / category
-    category_dir.mkdir(parents=True, exist_ok=True)
-    
-    log_file = category_dir / f"{module_name}.log"
     logger_name = f"{category}.{module_name}"
     logger = logging.getLogger(logger_name)
     
@@ -73,15 +85,32 @@ def get_logger(category: str, module_name: str) -> logging.Logger:
     logger.setLevel(logging.INFO)
     
     # 1. Handler para Arquivo (Log puro em disco sem códigos ANSI, 3MB e 3 backups)
-    file_handler = RotatingFileHandler(
-        filename=log_file,
-        maxBytes=3 * 1024 * 1024,  # 3 MB
-        backupCount=3,             # Mantém 3 arquivos de histórico
-        encoding='utf-8'
-    )
-    plain_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-    file_handler.setFormatter(plain_formatter)
-    file_handler.setLevel(logging.INFO)
+    category_dir = LOGS_DIR / category
+    log_file = category_dir / f"{module_name}.log"
+    try:
+        category_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(LOGS_DIR, 0o750)
+            os.chmod(category_dir, 0o750)
+        except OSError:
+            pass
+        file_handler = RotatingFileHandler(
+            filename=log_file,
+            maxBytes=3 * 1024 * 1024,  # 3 MB
+            backupCount=3,             # Mantém 3 arquivos de histórico
+            encoding='utf-8'
+        )
+        plain_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+        file_handler.setFormatter(plain_formatter)
+        file_handler.setLevel(logging.INFO)
+        logger.addHandler(file_handler)
+        if log_file.exists():
+            try:
+                os.chmod(log_file, 0o640)
+            except OSError:
+                pass
+    except OSError:
+        pass
     
     # 2. Handler para Terminal (Console com Cores ANSI e proteção Unicode)
     safe_stdout = SafeStreamWrapper(sys.stdout)
@@ -90,7 +119,7 @@ def get_logger(category: str, module_name: str) -> logging.Logger:
     stream_handler.setFormatter(color_formatter)
     stream_handler.setLevel(logging.INFO)
     
-    logger.addHandler(file_handler)
+    logger.addFilter(SecretRedactingFilter())
     logger.addHandler(stream_handler)
     logger.propagate = False
     

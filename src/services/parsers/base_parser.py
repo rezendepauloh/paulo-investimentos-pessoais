@@ -48,10 +48,12 @@ class BaseBankParser(ABC):
         return self.empty_dataframe()
 
     def parse_zip(self, file_bytes: bytes, filename: str = "", password: str = "") -> pd.DataFrame:
-        """Processa arquivo compactado .ZIP contendo extratos (.ofx, .csv, .xlsx, .pdf)."""
-        import zipfile
-        import io
+        """Processa arquivo compactado .ZIP com proteção contra Zip-Bomb e Path Traversal."""
         import os
+        from src.utils.logger import get_logger
+        from src.utils.security import redact_secrets, safe_read_zip_entries, validate_upload_bytes
+
+        log = get_logger("services", "parsers.base")
 
         pwd_candidates = []
         if password:
@@ -60,51 +62,34 @@ class BaseBankParser(ABC):
             val = os.getenv(env_k, "").strip()
             if val and val not in pwd_candidates:
                 pwd_candidates.append(val)
-        pwd_candidates.append("")  # tentativa sem senha
 
         try:
-            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
-                # Ordena arquivos úteis
-                valid_infos = [
-                    info for info in z.infolist()
-                    if not info.is_dir() and not info.filename.startswith("__MACOSX")
-                    and any(info.filename.lower().endswith(ext) for ext in [".csv", ".ofx", ".xlsx", ".xls", ".pdf"])
-                ]
-                if not valid_infos:
-                    # Se não filtrou por extensão, pega qualquer arquivo não diretório
-                    valid_infos = [info for info in z.infolist() if not info.is_dir() and not info.filename.startswith("__MACOSX")]
+            validate_upload_bytes(file_bytes, filename=filename or "archive.zip", allowed_extensions=[".zip"])
+            entries = safe_read_zip_entries(
+                file_bytes,
+                password_candidates=pwd_candidates,
+                allowed_inner_extensions=[".csv", ".ofx", ".xlsx", ".xls", ".pdf"],
+            )
 
-                dfs = []
-                for info in valid_infos:
-                    inner_bytes = None
-                    for pwd_str in pwd_candidates:
-                        pwd_b = pwd_str.encode("utf-8") if pwd_str else None
-                        try:
-                            inner_bytes = z.read(info, pwd=pwd_b)
-                            break
-                        except (RuntimeError, zipfile.BadZipFile):
-                            continue
+            dfs = []
+            for safe_name, inner_bytes in entries:
+                inner_lower = safe_name.lower()
+                if inner_lower.endswith(".ofx"):
+                    df_part = self.parse_ofx(inner_bytes, filename=safe_name)
+                elif inner_lower.endswith(".xlsx") or inner_lower.endswith(".xls"):
+                    df_part = self.parse_excel(inner_bytes, filename=safe_name)
+                elif inner_lower.endswith(".pdf"):
+                    df_part = self.parse_pdf(inner_bytes, filename=safe_name, password=password)
+                else:
+                    df_part = self.parse_csv(inner_bytes, filename=safe_name)
 
-                    if inner_bytes is None:
-                        continue
+                if not df_part.empty:
+                    dfs.append(df_part)
 
-                    inner_name = os.path.basename(info.filename).lower()
-                    if inner_name.endswith(".ofx"):
-                        df_part = self.parse_ofx(inner_bytes, filename=info.filename)
-                    elif inner_name.endswith(".xlsx") or inner_name.endswith(".xls"):
-                        df_part = self.parse_excel(inner_bytes, filename=info.filename)
-                    elif inner_name.endswith(".pdf"):
-                        df_part = self.parse_pdf(inner_bytes, filename=info.filename, password=password)
-                    else:
-                        df_part = self.parse_csv(inner_bytes, filename=info.filename)
-
-                    if not df_part.empty:
-                        dfs.append(df_part)
-
-                if dfs:
-                    return pd.concat(dfs, ignore_index=True)
-        except Exception:
-            pass
+            if dfs:
+                return pd.concat(dfs, ignore_index=True)
+        except Exception as e:
+            log.warning(f"Falha ao processar arquivo ZIP '{filename}': {redact_secrets(e)}")
 
         return self.empty_dataframe()
 

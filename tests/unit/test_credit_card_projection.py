@@ -68,7 +68,7 @@ class TestCreditCardProjection(unittest.TestCase):
             }
         ])
 
-        res = calculate_credit_card_projections(df_sample)
+        res = calculate_credit_card_projections(df_sample, reference_date="2026-09-15")
 
         # 1 compra ativa (Notebook Dell com 8 parcelas restantes de R$ 500)
         df_ativas = res["compras_ativas"]

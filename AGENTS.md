@@ -108,9 +108,10 @@ paulo-investimentos-pessoais/
 │   │   ├── importar_gastos.py  # Ingestão de extratos/comprovantes e conciliação
 │   │   ├── editor_planilhas.py # Editor interativo de dados
 │   │   └── configuracoes.py    # Credenciais, status de APIs e diagnósticos
-│   └── utils/                  # Utilitários compartilhados
-│       ├── formatting.py       # Formatação monetária PT-BR, porcentagens e normalizações
-│       └── logger.py           # Logger rotativo centralizado com suporte ANSI colorido
+│   ├── utils/                  # Utilitários compartilhados
+│   │   ├── formatting.py       # Formatação monetária PT-BR, porcentagens e normalizações
+│   │   ├── logger.py           # Logger rotativo centralizado com filtro de redação de segredos
+│   │   └── security.py         # Fail-Closed Auth, PBKDF2, HMAC, whitelists e defesa DoS/XSS/XXE/Zip-Bomb
 │
 ├── scripts/                    # Scripts utilitários de diagnóstico, manutenção e migração
 │   ├── auto_ajustar_splits.py  # Script de reconciliação de desdobramentos de ações
@@ -124,8 +125,12 @@ paulo-investimentos-pessoais/
 │   ├── unit/                   # Testes unitários de serviços e utilitários
 │   └── integration/            # Testes de integração (fluxo SQLite, delta sync, parsers)
 │
-└── util/                       # Documentações técnicas auxiliares
-    └── CONTEXTO_E_FUTURO.md    # Visão arquitetural futura para parsers bancários dedicados
+└── Docs/                       # 📚 Central Unificada de Documentação Técnica
+    ├── README.md               # Índice mestre navegável com hyperlinks
+    ├── arquitetura/            # Decisões de engenharia, banco híbrido, TWR e parsers
+    ├── guias/                  # Manuais de deploy, credenciais, conciliação e manutenção
+    ├── testes/                 # Documentação e execução da suíte de testes
+    └── issues/                 # Backlog e histórico de entregas
 ```
 
 ---
@@ -137,7 +142,11 @@ paulo-investimentos-pessoais/
 2. **Moedas e Conversão Cambial Dinâmica:**
    - Exibir máscaras apropriadas de acordo com a origem (`R$ #.###,##` ou `US$ #.###,##`).
    - Nas consolidações globais da carteira, unificar o patrimônio em BRL utilizando a cotação cambial em tempo real.
-3. **Respostas Diretas e Eficientes:**
+3. **Diretrizes de Segurança (SecOps & Fail-Closed):**
+   - Nunca armazene segredos, tokens, IPs privados de infraestrutura ou senhas em arquivos versionados; mantenha `.env` com permissão `chmod 600` e `data/credentials.json` protegido.
+   - Preserve validações via `src/utils/security.py` (whitelists de identificadores SQL, tickers e Spreadsheet IDs, `sanitize_html`, `sanitize_spreadsheet_cell`, limites anti-Zip-Bomb/DoS e redação de logs).
+   - Serviços e WebUI devem operar em **Fail-Closed**: não iniciar ou autenticar caso `REQUIRE_AUTH=true` esteja sem `DASHBOARD_AUTH_PASSWORD_HASH` / `DASHBOARD_SESSION_SECRET`.
+4. **Respostas Diretas e Eficientes:**
    - Otimize para concisão e alta densidade técnica.
    - Forneça dados estruturados e código limpo, sem prolixidade.
 

@@ -239,7 +239,13 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
             with st.spinner("Analisando comprovantes e extraindo parcelas via OCR Local..."):
                 for uploaded_file in uploaded_images:
                     try:
-                        bytes_data = uploaded_file.read()
+                        from src.utils.security import redact_secrets, validate_upload_bytes
+
+                        bytes_data = validate_upload_bytes(
+                            uploaded_file.read(),
+                            filename=uploaded_file.name,
+                            allowed_extensions=[".png", ".jpg", ".jpeg", ".webp", ".pdf"],
+                        )
                         mime_type = uploaded_file.type if uploaded_file.type else "image/png"
                         if "pdf" in uploaded_file.name.lower():
                             mime_type = "application/pdf"
@@ -253,7 +259,8 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
                         if not df_parsed.empty:
                             all_extracted.append(df_parsed)
                     except Exception as e:
-                        st.error(f"Erro ao processar `{uploaded_file.name}`: {e}")
+                        from src.utils.security import redact_secrets, sanitize_html
+                        st.error(f"Erro ao processar `{sanitize_html(uploaded_file.name)}`: {redact_secrets(e)}")
 
             if all_extracted:
                 df_novos = pd.concat(all_extracted, ignore_index=True)
@@ -315,8 +322,14 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
             with st.spinner("Decodificando extratos e normalizando dados com regras da instituição..."):
                 for b_file in uploaded_bank_files:
                     try:
-                        bytes_data = b_file.read()
+                        from src.utils.security import redact_secrets, validate_upload_bytes
+
                         fname = b_file.name
+                        bytes_data = validate_upload_bytes(
+                            b_file.read(),
+                            filename=fname,
+                            allowed_extensions=[".ofx", ".csv", ".xlsx", ".xls", ".pdf", ".txt", ".zip"],
+                        )
                         df_parsed = parse_bank_file(
                             file_bytes=bytes_data,
                             filename=fname,
@@ -326,7 +339,8 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
                         if not df_parsed.empty:
                             all_extracted_files.append(df_parsed)
                     except Exception as e:
-                        st.error(f"Erro ao processar `{b_file.name}`: {e}")
+                        from src.utils.security import redact_secrets, sanitize_html
+                        st.error(f"Erro ao processar `{sanitize_html(b_file.name)}`: {redact_secrets(e)}")
 
             if all_extracted_files:
                 df_novos_files = pd.concat(all_extracted_files, ignore_index=True)
@@ -440,7 +454,8 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
                     else:
                         st.info("Nenhuma transação retornada para o período informado ou contas não configuradas.")
             except Exception as e:
-                st.error(f"Erro ao consultar Open Finance Pluggy: {e}")
+                from src.utils.security import redact_secrets
+                st.error(f"Erro ao consultar Open Finance Pluggy: {redact_secrets(e)}")
 
     # ==========================================
     # ÁREA DE PRÉ-VISUALIZAÇÃO E CONCILIAÇÃO
@@ -625,7 +640,8 @@ def render_tab_importar_gastos(df_receitas_existentes: pd.DataFrame, df_despesas
                         )
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao salvar lançamentos: {e}")
+                        from src.utils.security import redact_secrets
+                        st.error(f"Erro ao salvar lançamentos: {redact_secrets(e)}")
 
     with btn_col2:
         if st.button("🗑️ Limpar Fila de Revisão", use_container_width=True):

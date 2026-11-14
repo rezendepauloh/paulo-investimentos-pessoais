@@ -25,8 +25,9 @@ def get_historical_cdi(start_date: datetime.date, end_date: datetime.date):
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
-        response = requests.get(url, headers=headers, timeout=30)
-        if response.status_code == 200:
+        from src.utils.security import MAX_HTTP_RESPONSE_BYTES
+        response = requests.get(url, headers=headers, timeout=30, verify=True)
+        if response.status_code == 200 and len(response.content) <= MAX_HTTP_RESPONSE_BYTES:
             data = response.json()
             if data:
                 df = pd.DataFrame(data)
@@ -98,8 +99,9 @@ def get_historical_ipca(start_date: datetime.date, end_date: datetime.date):
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     
     try:
-        response = requests.get(url, headers=headers, timeout=30)
-        if response.status_code == 200:
+        from src.utils.security import MAX_HTTP_RESPONSE_BYTES
+        response = requests.get(url, headers=headers, timeout=30, verify=True)
+        if response.status_code == 200 and len(response.content) <= MAX_HTTP_RESPONSE_BYTES:
             data = response.json()
             if data:
                 df = pd.DataFrame(data)
@@ -183,6 +185,8 @@ def is_valid_yfinance_ticker(ticker: str, asset_type: str = None) -> bool:
     Verifica se um ticker é válido para consulta no Yahoo Finance.
     Retorna False para Renda Fixa, Contas, Dinheiro ou outros ativos não cotados publicamente.
     """
+    from src.utils.security import validate_ticker_symbol
+
     t = str(ticker).strip().upper()
     if not t or t in ["CONTA", "CAPITAL", "CAIXA", "SALDO", "CDB", "LCI", "LCA", "TESOURO", "POUPANÇA", "POUPANCA"]:
         return False
@@ -195,6 +199,11 @@ def is_valid_yfinance_ticker(ticker: str, asset_type: str = None) -> bool:
     # Se contiver espaços ou for excessivamente longo, não é um ticker de mercado
     if " " in t or len(t) > 10:
         return False
+
+    try:
+        validate_ticker_symbol(t)
+    except ValueError:
+        return False
         
     return True
 
@@ -203,8 +212,11 @@ def normalize_ticker(ticker: str):
     Normaliza os códigos dos papéis para o formato correto no Yahoo Finance.
     Adiciona .SA para ações brasileiras e FIIs, a menos que seja um índice global ou cripto.
     """
-    t = str(ticker).strip().upper()
-    if not t:
+    from src.utils.security import validate_ticker_symbol
+
+    try:
+        t = validate_ticker_symbol(str(ticker or ""))
+    except ValueError:
         return ""
     
     # Se já tiver .SA ou for índice internacional (^GSPC, ^BVSP), ou paridade de cripto

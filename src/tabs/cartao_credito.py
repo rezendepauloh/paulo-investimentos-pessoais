@@ -187,6 +187,7 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame, df_receitas: pd.DataFra
             st.markdown("#### 🎯 Diagnóstico de Solvência & Tomada de Decisão")
             st.caption("Avaliação de comprometimento de renda, alavancagem de curto prazo e qualidade do endividamento.")
             
+            from src.utils.security import sanitize_html
             cols_cc = st.columns(min(3, len(diagnosticos_cc)))
             for idx, d_item in enumerate(diagnosticos_cc):
                 with cols_cc[idx % len(cols_cc)]:
@@ -194,9 +195,9 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame, df_receitas: pd.DataFra
                     st.markdown(
                         f"""
                         <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 14px; background-color: rgba(255, 255, 255, 0.03);">
-                            <div style="font-size: 1.05rem; font-weight: 600;">{d_item['icone']} {d_item['titulo']}</div>
-                            <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{val_card}</div>
-                            <div style="font-size: 0.86rem; color: #888;">{d_item['mensagem']}</div>
+                            <div style="font-size: 1.05rem; font-weight: 600;">{sanitize_html(d_item['icone'])} {sanitize_html(d_item['titulo'])}</div>
+                            <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{sanitize_html(val_card)}</div>
+                            <div style="font-size: 0.86rem; color: #888;">{sanitize_html(d_item['mensagem'])}</div>
                         </div>
                         """,
                         unsafe_allow_html=True
@@ -615,6 +616,7 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame, df_receitas: pd.DataFra
 
         if diagnosticos_cc:
             st.markdown("#### 🔍 Pareceres do Diagnóstico:")
+            from src.utils.security import sanitize_html
             cols_diag = st.columns(min(3, len(diagnosticos_cc)))
             for idx, d_item in enumerate(diagnosticos_cc):
                 with cols_diag[idx % len(cols_diag)]:
@@ -622,9 +624,9 @@ def render_tab_cartao_credito(df_despesas: pd.DataFrame, df_receitas: pd.DataFra
                     st.markdown(
                         f"""
                         <div style="border-radius: 8px; border: 1px solid #e0e0e0; padding: 12px; margin-bottom: 14px; background-color: rgba(255, 255, 255, 0.03);">
-                            <div style="font-size: 1.05rem; font-weight: 600;">{d_item['icone']} {d_item['titulo']}</div>
-                            <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{val_card}</div>
-                            <div style="font-size: 0.86rem; color: #888;">{d_item['mensagem']}</div>
+                            <div style="font-size: 1.05rem; font-weight: 600;">{sanitize_html(d_item['icone'])} {sanitize_html(d_item['titulo'])}</div>
+                            <div style="font-size: 1.35rem; font-weight: bold; margin: 4px 0;">{sanitize_html(val_card)}</div>
+                            <div style="font-size: 0.86rem; color: #888;">{sanitize_html(d_item['mensagem'])}</div>
                         </div>
                         """,
                         unsafe_allow_html=True
