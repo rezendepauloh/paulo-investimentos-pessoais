@@ -54,13 +54,13 @@ O ecossistema opera de forma desacoplada e 100% containerizada via **Docker Comp
 
 ```mermaid
 flowchart TD
-    subgraph Host ["Máquina Host (Windows / WSL2 / Linux)"]
-        Browser["Navegador Web<br/>(Porta 8502)"]
+    subgraph Host["Máquina Host (Windows / WSL2 / Linux)"]
+        Browser["Navegador Web (Porta 8502)"]
         Launcher["00-iniciar.sh / 00-iniciar.cmd"]
     end
 
-    subgraph DockerCompose ["Docker Compose Stack"]
-        subgraph AppContainer ["paulo-investimentos-app (Python 3.12-slim)"]
+    subgraph DockerCompose["Docker Compose Stack"]
+        subgraph AppContainer["paulo-investimentos-app (Python 3.12-slim)"]
             ST["Interface Web Streamlit (dashboard.py)"]
             DL["Data Loader & Delta Sync"]
             Analytics["Motor de Rentabilidade TWR"]
@@ -68,13 +68,13 @@ flowchart TD
             AI["Agente IA (Gemini Vision + Alocação)"]
         end
 
-        subgraph Storage ["Persistência Local (Volumes data/)"]
-            DB[("SQLite Cache Local<br/>(investimentos.db / financas.db)")]
+        subgraph Storage["Persistência Local (Volumes data/)"]
+            DB[("SQLite Cache Local (investimentos.db / financas.db)")]
             Creds["credentials.json (OAuth Google)"]
         end
     end
 
-    subgraph Cloud ["Serviços Externos & Nuvem"]
+    subgraph Cloud["Serviços Externos & Nuvem"]
         Sheets["Google Sheets API (gspread)"]
         YF["Yahoo Finance (Cotações & Splits)"]
         Pluggy["Open Finance Pluggy"]
