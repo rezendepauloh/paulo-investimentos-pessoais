@@ -325,7 +325,9 @@ def verify_password_pbkdf2(password: str, stored_hash: str) -> bool:
     if not password or not stored_hash:
         return False
     try:
-        parts = stored_hash.strip().split("$")
+        cleaned = stored_hash.strip()
+        sep = ":" if ":" in cleaned and "$" not in cleaned else "$"
+        parts = cleaned.split(sep)
         if len(parts) != 4 or parts[0] != "pbkdf2_sha256":
             return False
         iterations = int(parts[1])
@@ -394,7 +396,7 @@ def validate_runtime_security_config() -> Tuple[bool, str]:
             "Bloqueio Fail-Closed: DASHBOARD_ACCESS_PASSWORD deve ter pelo menos 10 caracteres."
         )
 
-    if pwd_hash and not pwd_hash.startswith("pbkdf2_sha256$"):
+    if pwd_hash and not pwd_hash.startswith(("pbkdf2_sha256$", "pbkdf2_sha256:")):
         return (
             False,
             "Bloqueio Fail-Closed: DASHBOARD_AUTH_PASSWORD_HASH possui formato inválido (esperado pbkdf2_sha256$...)."

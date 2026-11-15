@@ -409,7 +409,7 @@ deploy_homelab() {
 
     # 2. Criar diretório remoto com permissões restritas (menor privilégio)
     echo -e "${C_YELLOW}[2/5] Garantindo diretório da stack no servidor (${DEST_DIR})...${C_RESET}"
-    ssh "${SSH_OPTS[@]}" "${USER}@${HOST}" "mkdir -p ${SAFE_DEST_DIR}/data ${SAFE_DEST_DIR}/logs && chmod 750 ${SAFE_DEST_DIR} ${SAFE_DEST_DIR}/data ${SAFE_DEST_DIR}/logs"
+    ssh "${SSH_OPTS[@]}" "${USER}@${HOST}" "mkdir -p ${SAFE_DEST_DIR}/data ${SAFE_DEST_DIR}/logs && chmod 750 ${SAFE_DEST_DIR} && (chmod 750 ${SAFE_DEST_DIR}/data ${SAFE_DEST_DIR}/logs 2>/dev/null || true)"
     if [ $? -ne 0 ]; then
         echo -e "${C_RED}❌ Falha na comunicação SSH com ${USER}@${HOST}.${C_RESET}"
         read -p "Pressione ENTER para voltar ao menu..." dummy

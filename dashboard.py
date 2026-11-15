@@ -68,12 +68,36 @@ def _enforce_security_gate() -> None:
     auth_service: AuthService = st.session_state["auth_service"]
 
     token = st.session_state.get("auth_session_token", "")
+    if not token:
+        try:
+            cookies = getattr(getattr(st, "context", None), "cookies", None)
+            if cookies:
+                token = cookies.get("paulo_inv_session", "") or ""
+        except Exception:
+            token = ""
+
     if auth_service.validate_session_token(token):
+        st.session_state["auth_session_token"] = token
+        if st.session_state.pop("_sync_auth_cookie", False):
+            import json
+            import streamlit.components.v1 as components
+            components.html(
+                f"<script>document.cookie = 'paulo_inv_session=' + encodeURIComponent({json.dumps(token)}) + '; path=/; max-age=28800; SameSite=Lax';</script>",
+                height=0,
+            )
         with st.sidebar:
             if st.button("🔒 Encerrar Sessão", key="btn_logout_session", use_container_width=True):
                 st.session_state.pop("auth_session_token", None)
+                st.session_state["_clear_auth_cookie"] = True
                 st.rerun()
         return
+
+    if st.session_state.pop("_clear_auth_cookie", False):
+        import streamlit.components.v1 as components
+        components.html(
+            "<script>document.cookie = 'paulo_inv_session=; path=/; max-age=0; SameSite=Lax';</script>",
+            height=0,
+        )
 
     st.markdown("## 🔒 Acesso Restrito — Paulo Finanças & Investimentos")
     st.caption("Autenticação obrigatória habilitada em modo Fail-Closed.")
@@ -84,6 +108,7 @@ def _enforce_security_gate() -> None:
             status_code, msg = auth_service.verify_credentials(pwd_input, client_key="webui")
             if status_code == 200:
                 st.session_state["auth_session_token"] = auth_service.create_session_token()
+                st.session_state["_sync_auth_cookie"] = True
                 logger.info("Autenticação WebUI realizada com sucesso.")
                 st.rerun()
             else:
